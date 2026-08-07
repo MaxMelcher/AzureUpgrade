@@ -435,3 +435,5 @@ dist/
 
 # Legacy exhaustive matrix; use the scoped UK South/Linux matrix instead.
 quality-check/recommendations.csv
+quality-check/recommendations-uksouth-linux.csv
+quality-check/recommendations-uksouth-linux-eol.csv

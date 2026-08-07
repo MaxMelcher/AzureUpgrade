@@ -17,6 +17,18 @@ export interface VmRestriction {
   values: string[];
 }
 
+export interface VmRetirement {
+  eolDate: string;
+  description: string;
+  sourceUrl: string;
+  regionEolDates?: Record<string, string>;
+}
+
+export interface RetirementCatalog {
+  families: Record<string, VmRetirement>;
+  skus: Record<string, VmRetirement>;
+}
+
 export interface VmSku {
   name: string;
   family: string;
@@ -24,6 +36,7 @@ export interface VmSku {
   tier: string;
   vcpus: number | null;
   vcpusAvailable: number | null;
+  gpus: number | null;
   memoryGB: number | null;
   tempDiskMB: number | null;
   maxDataDisks: number | null;
@@ -38,6 +51,7 @@ export interface VmSku {
   cpuGeneration: number | null;
   zones: string[];
   restrictions: VmRestriction[];
+  retirement: VmRetirement | null;
   prices: VmPrices;
 }
 
@@ -45,6 +59,7 @@ export interface RegionInfo {
   name: string;
   displayName: string;
   skuCount: number;
+  generatedAt: string;
 }
 
 export interface RegionalCatalog {
@@ -61,6 +76,8 @@ export interface RejectedCandidateStatistics {
   sourceSku: number;
   price: number;
   usableVcpus: number;
+  constrainedShape: number;
+  gpus: number;
   memory: number;
   dataDisks: number;
   tempDisk: number;
@@ -70,6 +87,7 @@ export interface RejectedCandidateStatistics {
   architecture: number;
   cpuVendor: number;
   olderGeneration: number;
+  retirement: number;
 }
 
 export type RecommendationStatus =
@@ -98,13 +116,15 @@ export interface RecommendationResult {
   rejected: RejectedCandidateStatistics;
   explanation: string;
   confidence: Confidence;
+  mandatoryUpgrade: boolean;
 }
 
 export interface QualityMatrixRow {
   region: string;
+  family: string;
   sourceSku: string;
   os: OperatingSystem;
-  cpuPolicy: CpuPolicy;
+  cpuPolicy: string;
   status: RecommendationStatus;
   recommendation: string;
   sourceHourly: number | null;
@@ -113,4 +133,6 @@ export interface QualityMatrixRow {
   savingPercent: number | null;
   confidence: Confidence;
   explanation: string;
+  mandatoryUpgrade: boolean;
+  sourceEolDate: string;
 }

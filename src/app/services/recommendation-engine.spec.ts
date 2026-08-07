@@ -2,13 +2,13 @@ import { RegionalCatalog, VmSku } from '../models/vm.models';
 import { RecommendationEngine } from './recommendation-engine';
 
 describe('RecommendationEngine', () => {
-  it('rejects a candidate without enough temporary storage for Standard_D4as_v4', () => {
+  it('allows Linux to resize from a local temp disk to no local temp disk', () => {
     const source = vm({
       name: 'Standard_D4as_v4',
       family: 'standardDASv4Family',
       tempDiskMB: 32768,
       cpuVendor: 'AMD',
-      cpuGeneration: 2
+      cpuGeneration: 2,
     });
     const noTempDisk = vm({
       name: 'Standard_D4as_v5',
@@ -16,7 +16,7 @@ describe('RecommendationEngine', () => {
       tempDiskMB: 0,
       cpuVendor: 'AMD',
       cpuGeneration: 3,
-      prices: prices(0.12)
+      prices: prices(0.05),
     });
     const compatible = vm({
       name: 'Standard_D4ads_v5',
@@ -24,12 +24,36 @@ describe('RecommendationEngine', () => {
       tempDiskMB: 76800,
       cpuVendor: 'AMD',
       cpuGeneration: 3,
-      prices: prices(0.14)
+      prices: prices(0.14),
     });
 
-    const result = engine(source, noTempDisk, compatible)
-      .findRecommendations(source.name, 'westeurope', 'linux');
+    const result = engine(source, noTempDisk, compatible).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
 
+    expect(result.recommendation?.vm.name).toBe('Standard_D4as_v5');
+    expect(result.rejected.tempDisk).toBe(0);
+  });
+
+  it('requires Windows source and target to have matching local temp disk presence', () => {
+    const source = vm({ tempDiskMB: 32768 });
+    const noTempDisk = vm({
+      name: 'Standard_D4as_v5',
+      tempDiskMB: 0,
+      prices: prices(0.05),
+    });
+    const withTempDisk = vm({
+      name: 'Standard_D4ads_v5',
+      tempDiskMB: 76800,
+      prices: prices(0.14),
+    });
+    const result = engine(source, noTempDisk, withTempDisk).findRecommendations(
+      source.name,
+      'westeurope',
+      'windows',
+    );
     expect(result.recommendation?.vm.name).toBe('Standard_D4ads_v5');
     expect(result.rejected.tempDisk).toBe(1);
   });
@@ -42,7 +66,7 @@ describe('RecommendationEngine', () => {
       memoryGB: 128,
       cpuVendor: 'AMD',
       cpuGeneration: 2,
-      prices: prices(0.9)
+      prices: prices(0.9),
     });
     const constrained = vm({
       name: 'Standard_E16-4as_v5',
@@ -51,7 +75,7 @@ describe('RecommendationEngine', () => {
       memoryGB: 128,
       cpuVendor: 'AMD',
       cpuGeneration: 3,
-      prices: prices(0.7)
+      prices: prices(0.7),
     });
     const fullCpu = vm({
       name: 'Standard_E16as_v5',
@@ -60,20 +84,60 @@ describe('RecommendationEngine', () => {
       memoryGB: 128,
       cpuVendor: 'AMD',
       cpuGeneration: 3,
-      prices: prices(0.69)
+      prices: prices(0.69),
     });
 
-    const result = engine(source, fullCpu, constrained)
-      .findRecommendations(source.name, 'westeurope', 'linux');
+    const result = engine(source, fullCpu, constrained).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
 
     expect(result.recommendation?.vm.name).toBe('Standard_E16-4as_v5');
+  });
+
+  it('never recommends a constrained shape for an unconstrained source', () => {
+    const source = vm({
+      name: 'Standard_DS3_v2',
+      memoryGB: 14,
+      maxDataDisks: 16,
+      cpuGeneration: 1,
+      prices: prices(0.3),
+    });
+    const constrained = vm({
+      name: 'Standard_E8-4ds_v4',
+      vcpus: 8,
+      vcpusAvailable: 4,
+      memoryGB: 64,
+      maxDataDisks: 16,
+      cpuGeneration: 3,
+      prices: prices(0.1),
+    });
+    const regular = vm({
+      name: 'Standard_D4ds_v5',
+      memoryGB: 16,
+      maxDataDisks: 8,
+      cpuGeneration: 4,
+      prices: prices(0.2),
+    });
+    const result = engine(source, constrained, regular).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_D4ds_v5');
+    expect(result.rejected.constrainedShape).toBe(1);
+    expect(result.explanation).toContain('reduced data disk limit');
   });
 
   it('finds source SKUs case-insensitively', () => {
     const source = vm({ name: 'Standard_DS3_v2' });
     const replacement = vm({ name: 'Standard_D4s_v5', cpuGeneration: 4, prices: prices(0.15) });
-    const result = engine(source, replacement)
-      .findRecommendations('standard_ds3_V2', 'westeurope', 'linux');
+    const result = engine(source, replacement).findRecommendations(
+      'standard_ds3_V2',
+      'westeurope',
+      'linux',
+    );
     expect(result.source?.name).toBe('Standard_DS3_v2');
   });
 
@@ -83,16 +147,20 @@ describe('RecommendationEngine', () => {
       name: 'Standard_D4s_v5',
       cpuVendor: 'Intel',
       cpuGeneration: 4,
-      prices: prices(0.1)
+      prices: prices(0.1),
     });
     const amd = vm({
       name: 'Standard_D4as_v5',
       cpuVendor: 'AMD',
       cpuGeneration: 3,
-      prices: prices(0.2)
+      prices: prices(0.2),
     });
-    const result = engine(source, intel, amd)
-      .findRecommendations(source.name, 'westeurope', 'linux', 'same-vendor');
+    const result = engine(source, intel, amd).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+      'same-vendor',
+    );
     expect(result.recommendation?.vm.name).toBe('Standard_D4as_v5');
     expect(result.rejected.cpuVendor).toBe(1);
   });
@@ -105,8 +173,11 @@ describe('RecommendationEngine', () => {
 
   it('refuses to match when important source capability metadata is incomplete', () => {
     const source = vm({ tempDiskMB: null });
-    const result = engine(source, vm({ name: 'Standard_D4s_v5' }))
-      .findRecommendations(source.name, 'westeurope', 'linux');
+    const result = engine(source, vm({ name: 'Standard_D4s_v5' })).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
     expect(result.status).toBe('incomplete-capabilities');
     expect(result.confidence).toBe('Low');
   });
@@ -117,12 +188,15 @@ describe('RecommendationEngine', () => {
       name: 'Standard_D4s_v5',
       prices: {
         ...prices(0.15),
-        windowsPaygHourly: null
-      }
+        windowsPaygHourly: null,
+      },
     });
 
-    const result = engine(source, linuxOnly)
-      .findRecommendations(source.name, 'westeurope', 'windows');
+    const result = engine(source, linuxOnly).findRecommendations(
+      source.name,
+      'westeurope',
+      'windows',
+    );
     expect(result.status).toBe('no-compatible-replacement');
     expect(result.rejected.price).toBe(1);
   });
@@ -131,17 +205,20 @@ describe('RecommendationEngine', () => {
     const source = vm({
       prices: {
         ...prices(),
-        linuxPaygHourly: null
-      }
+        linuxPaygHourly: null,
+      },
     });
     const replacement = vm({
       name: 'Standard_D4ads_v5',
       tempDiskMB: 76800,
       cpuGeneration: 3,
-      prices: prices(0.15)
+      prices: prices(0.15),
     });
-    const result = engine(source, replacement)
-      .findRecommendations(source.name, 'westeurope', 'linux');
+    const result = engine(source, replacement).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
     expect(result.status).toBe('source-price-missing');
     expect(result.recommendation?.vm.name).toBe('Standard_D4ads_v5');
     expect(result.recommendation?.monthlySaving).toBeNull();
@@ -149,11 +226,89 @@ describe('RecommendationEngine', () => {
 
   it('creates every source and CPU-policy quality-check combination for Linux', () => {
     const matrix = engine(vm({}), vm({ name: 'Standard_D4s_v5' })).createQualityMatrix();
-    expect(matrix).toHaveLength(6);
+    expect(matrix).toHaveLength(1);
     expect(new Set(matrix.map((row) => row.os))).toEqual(new Set(['linux']));
-    expect(new Set(matrix.map((row) => row.cpuPolicy))).toEqual(
-      new Set(['same-vendor', 'prefer-same-vendor', 'any-compatible'])
+    expect(matrix[0].cpuPolicy).toBe('same-vendor | prefer-same-vendor | any-compatible');
+  });
+
+  it('uses one unconstrained Linux-priced representative per family in the quality matrix', () => {
+    const constrained = vm({
+      name: 'Standard_E8-4ds_v5',
+      vcpus: 8,
+      vcpusAvailable: 4,
+      prices: prices(0.1),
+    });
+    const regular = vm({ name: 'Standard_E4ds_v5', prices: prices(0.2) });
+    const otherFamily = vm({
+      name: 'Standard_F4s_v2',
+      family: 'standardFSv2Family',
+      prices: prices(0.15),
+    });
+    const matrix = engine(constrained, regular, otherFamily).createQualityMatrix();
+    expect(matrix).toHaveLength(2);
+    expect(new Set(matrix.map((row) => row.sourceSku))).toEqual(
+      new Set(['Standard_E4ds_v5', 'Standard_F4s_v2']),
     );
+  });
+
+  it('makes a retired source mandatory and never recommends a retiring candidate', () => {
+    const source = vm({
+      retirement: {
+        eolDate: '2020-01-01',
+        description: 'Retired test family',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+    });
+
+    const retiredCandidate = vm({
+      name: 'Standard_D4ads_v5',
+      cpuGeneration: 3,
+      retirement: {
+        eolDate: '2030-01-01',
+        description: 'Scheduled retirement',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      prices: prices(0.1),
+    });
+    const supportedCandidate = vm({
+      name: 'Standard_D4ads_v6',
+      cpuGeneration: 4,
+      prices: prices(0.15),
+    });
+    const result = engine(source, retiredCandidate, supportedCandidate).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.mandatoryUpgrade).toBe(true);
+    expect(result.recommendation?.vm.name).toBe('Standard_D4ads_v6');
+    expect(result.rejected.retirement).toBe(1);
+    expect(result.explanation).toContain('upgrading is required');
+  });
+
+  it('never replaces a GPU source with a non-GPU candidate', () => {
+    const source = vm({ name: 'Standard_NC6s_v3', gpus: 1 });
+    const cpuOnly = vm({
+      name: 'Standard_DC8s_v3',
+      vcpus: 8,
+      vcpusAvailable: 8,
+      gpus: 0,
+      prices: prices(0.1),
+    });
+    const gpuCandidate = vm({
+      name: 'Standard_NC8ads_A10_v5',
+      vcpus: 8,
+      vcpusAvailable: 8,
+      gpus: 1,
+      prices: prices(0.2),
+    });
+    const result = engine(source, cpuOnly, gpuCandidate).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_NC8ads_A10_v5');
+    expect(result.rejected.gpus).toBe(1);
   });
 });
 
@@ -164,7 +319,7 @@ function engine(...skus: VmSku[]): RecommendationEngine {
     currencyCode: 'EUR',
     region: 'westeurope',
     displayName: 'West Europe',
-    skus
+    skus,
   };
   return new RecommendationEngine(catalog);
 }
@@ -176,7 +331,7 @@ function prices(linux = 0.2, windows = 0.3) {
     linuxReservation1Year: null,
     linuxReservation3Year: null,
     windowsReservation1Year: null,
-    windowsReservation3Year: null
+    windowsReservation3Year: null,
   };
 }
 
@@ -188,6 +343,7 @@ function vm(overrides: Partial<VmSku>): VmSku {
     tier: 'Standard',
     vcpus: 4,
     vcpusAvailable: 4,
+    gpus: 0,
     memoryGB: 16,
     tempDiskMB: 32768,
     maxDataDisks: 8,
@@ -202,7 +358,8 @@ function vm(overrides: Partial<VmSku>): VmSku {
     cpuGeneration: 2,
     zones: ['1', '2', '3'],
     restrictions: [],
+    retirement: null,
     prices: prices(),
-    ...overrides
+    ...overrides,
   };
 }

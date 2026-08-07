@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { AdvisorFormComponent, AdvisorRequest } from './components/advisor-form/advisor-form';
 import { ResultsListComponent } from './components/results-list/results-list';
@@ -8,7 +9,7 @@ import { RecommendationEngine } from './services/recommendation-engine';
 
 @Component({
   selector: 'app-root',
-  imports: [AdvisorFormComponent, ResultsListComponent],
+  imports: [DatePipe, AdvisorFormComponent, ResultsListComponent],
   template: `
     <header class="app-header">
       <div class="shell header-content">
@@ -16,8 +17,13 @@ import { RecommendationEngine } from './services/recommendation-engine';
           <span class="brand-mark" aria-hidden="true">A</span>
           <span>Azure VM Upgrade Advisor</span>
         </a>
-        <a class="docs-link" href="https://azure.microsoft.com/pricing/details/virtual-machines/"
-          target="_blank" rel="noreferrer">Azure retail pricing</a>
+        <a
+          class="docs-link"
+          href="https://azure.microsoft.com/pricing/details/virtual-machines/"
+          target="_blank"
+          rel="noreferrer"
+          >Azure retail pricing</a
+        >
       </div>
     </header>
 
@@ -59,11 +65,35 @@ import { RecommendationEngine } from './services/recommendation-engine';
     </main>
 
     <footer class="shell">
-      Estimates use continuous runtime (730 hours/month, 8,760 hours/year) and public Azure retail pricing.
-      Subscription offers, negotiated discounts, quotas, and reservations may differ.
+      <div class="footer-content">
+        <p>
+          <strong>Due diligence notice.</strong> Recommendations and cost estimates are
+          informational only and are not Microsoft or financial advice. Validate workload
+          compatibility, regional availability, quotas, licensing, support, and actual subscription
+          pricing before changing production resources.
+        </p>
+        <p>
+          Estimates use continuous runtime (730 hours/month) and public Azure retail pricing.
+          Subscription offers, negotiated discounts, reservations, and actual usage may differ.
+          @if (catalogRefreshedAt(); as refreshedAt) {
+            Catalog last refreshed {{ refreshedAt | date: 'mediumDate' : 'UTC' }} (UTC).
+          }
+        </p>
+        <div class="footer-links">
+          <span>
+            Made by
+            <a href="https://www.linkedin.com/in/maxmelcher/" target="_blank" rel="noreferrer">
+              Max Melcher
+            </a>
+          </span>
+          <a href="https://github.com/MaxMelcher/azureupgrade" target="_blank" rel="noreferrer">
+            Source code
+          </a>
+        </div>
+      </div>
     </footer>
   `,
-  changeDetection: ChangeDetectionStrategy.OnPush
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App implements OnInit {
   private readonly catalogService = inject(CatalogService);
@@ -77,15 +107,24 @@ export class App implements OnInit {
   protected readonly busyMatrix = signal(false);
   protected readonly selectedRegionName = signal('');
   protected readonly currencyCode = signal('GBP');
+  protected readonly catalogRefreshedAt = signal<string | null>(null);
   private lastRequest: AdvisorRequest | null = null;
   private engine: RecommendationEngine | null = null;
 
   public ngOnInit(): void {
     this.catalogService.loadRegions().subscribe({
-      next: (regions) => this.regions.set(regions),
-      error: () => this.regionsError.set(
-        'The regional catalog could not be loaded. Generate it with tools/Generate-VmCatalog.ps1.'
-      )
+      next: (regions) => {
+        this.regions.set(regions);
+        const latest = regions
+          .map((region) => Date.parse(region.generatedAt))
+          .filter((timestamp) => Number.isFinite(timestamp))
+          .sort((left, right) => right - left)[0];
+        this.catalogRefreshedAt.set(latest === undefined ? null : new Date(latest).toISOString());
+      },
+      error: () =>
+        this.regionsError.set(
+          'The regional catalog could not be loaded. Generate it with tools/Generate-VmCatalog.ps1.',
+        ),
     });
   }
 
@@ -100,15 +139,17 @@ export class App implements OnInit {
         this.engine = new RecommendationEngine(catalog);
         this.selectedRegionName.set(catalog.displayName);
         this.currencyCode.set(catalog.currencyCode);
-        this.results.set(request.skus.map((sku) =>
-          this.engine!.findRecommendations(sku, request.region, request.os, request.cpuPolicy)
-        ));
+        this.results.set(
+          request.skus.map((sku) =>
+            this.engine!.findRecommendations(sku, request.region, request.os, request.cpuPolicy),
+          ),
+        );
         this.busy.set(false);
       },
       error: () => {
         this.searchError.set('No generated catalog is available for this region.');
         this.busy.set(false);
-      }
+      },
     });
   }
 
@@ -120,7 +161,7 @@ export class App implements OnInit {
     this.exportService.downloadResults(
       this.results(),
       this.currencyCode(),
-      `azure-vm-upgrades-${this.lastRequest?.region ?? 'results'}.csv`
+      `azure-vm-upgrades-${this.lastRequest?.region ?? 'results'}.csv`,
     );
   }
 
@@ -135,7 +176,7 @@ export class App implements OnInit {
       this.exportService.downloadQualityMatrix(
         rows,
         this.currencyCode(),
-        `recommendation-quality-matrix-${this.lastRequest!.region}.csv`
+        `recommendation-quality-matrix-${this.lastRequest!.region}.csv`,
       );
       this.busyMatrix.set(false);
     });

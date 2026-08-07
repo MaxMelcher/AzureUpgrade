@@ -7,12 +7,14 @@ The matcher never infers hardware from SKU-name letters. Temporary storage, usab
 ## Features
 
 - Regional, case-insensitive lookup for pasted VM lists
-- Linux and Windows PAYG prices in the generated currency
-- Hard compatibility filters for usable vCPU, memory, data disks, temporary storage, architecture, Premium IO, accelerated networking, and RDMA
+- Linux PAYG recommendations in the UI, with both Linux and Windows prices retained in generated data
+- Hard compatibility filters for usable vCPU, GPU count, memory, architecture, Premium IO, accelerated networking, and RDMA
+- Constrained-vCPU candidates only for constrained sources, OS-specific local temp-disk resize rules, and surfaced data-disk-limit risks
 - Correct constrained-vCPU handling
 - Same-vendor, prefer-same-vendor, and any-compatible CPU policies
 - Ranked recommendation plus three alternatives, explanation, confidence, and rejection statistics
 - Hourly, monthly, yearly, and monthly-saving estimates
+- Savings-based result groups and mandatory upgrades for retired VM families with official EOL dates
 - Excel-friendly CSV, clipboard export, and an exhaustive quality-check matrix
 - Responsive light/dark UI with no browser calls to Azure
 
@@ -64,11 +66,16 @@ npm start
 
 Open `http://localhost:4200`.
 
-`npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux.csv`. It contains every UK South source SKU for Linux and all three CPU policies, using the exact same matcher as the application.
+`npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux-family.csv`. It contains one representative VM per UK South family for Linux and all three CPU policies, using the exact same matcher as the application.
 
 ## Static hosting
 
 The production output is `dist/azure-vm-upgrade-advisor/browser`. Deploy that folder to Azure Static Web Apps or any static file host. `public/staticwebapp.config.json` supplies the static MIME types and fallback behavior.
+
+Pushes to `main` automatically test, build, and deploy through
+`.github/workflows/azure-static-web-apps-ambitious-stone-06a515c10.yml`. Create the GitHub Actions secret
+`AZURE_STATIC_WEB_APPS_API_TOKEN` with the Static Web App deployment token before enabling the
+workflow.
 
 ## Data layout
 
@@ -76,11 +83,16 @@ The production output is `dist/azure-vm-upgrade-advisor/browser`. Deploy that fo
 src/assets/data/
   regions.json
   cpu-families.json
+  retirements.json
   regions/
-    uksouth.json
+    <region>.json
 ```
 
-Only `cpu-families.json` is curated. Azure-reported architecture takes precedence over its architecture value. Unknown CPU families stay unknown and reduce recommendation confidence.
+`cpu-families.json` is curated CPU metadata. `retirements.json` contains family identifiers and exact
+SKU exceptions verified against Azure SKU metadata and official
+[Azure VM size lifecycle documentation](https://learn.microsoft.com/azure/virtual-machines/sizes/lifecycle/retired-sizes-list).
+Azure-reported architecture takes precedence over curated architecture. Unknown CPU families stay
+unknown and reduce recommendation confidence.
 
 ## Cost estimates
 

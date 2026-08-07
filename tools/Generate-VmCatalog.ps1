@@ -264,6 +264,7 @@ function Convert-Sku {
         tier = [string] $Sku.tier
         vcpus = $vcpus
         vcpusAvailable = $vcpusAvailable
+        gpus = Convert-ToNullableInt (Get-CapabilityValue $Sku 'GPUs')
         memoryGB = Convert-ToNullableDouble (Get-CapabilityValue $Sku 'MemoryGB')
         tempDiskMB = Convert-ToNullableInt (Get-CapabilityValue $Sku 'MaxResourceVolumeMB')
         maxDataDisks = Convert-ToNullableInt (Get-CapabilityValue $Sku 'MaxDataDiskCount')
@@ -375,6 +376,7 @@ for ($index = 0; $index -lt $selectedRegions.Count; $index++) {
         name = $region
         displayName = $displayName
         skuCount = $normalized.Count
+        generatedAt = $generatedAt
     })
 }
 

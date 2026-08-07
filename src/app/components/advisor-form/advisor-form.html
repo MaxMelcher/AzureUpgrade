@@ -11,21 +11,13 @@
     <div class="control-grid">
       <label>
         <span>Azure region</span>
-        <select name="region" [(ngModel)]="region" required>
+        <select name="region" [ngModel]="region" (ngModelChange)="selectRegion($event)" required>
           <option value="" disabled>Select a region</option>
           @for (item of regions(); track item.name) {
             <option [value]="item.name">{{ item.displayName }} ({{ item.skuCount }} SKUs)</option>
           }
         </select>
       </label>
-
-      <fieldset>
-        <legend>Operating system</legend>
-        <div class="segmented">
-          <label><input type="radio" name="os" value="linux" [(ngModel)]="os"><span>Linux</span></label>
-          <label><input type="radio" name="os" value="windows" [(ngModel)]="os"><span>Windows</span></label>
-        </div>
-      </fieldset>
 
       <label>
         <span>CPU policy</span>
@@ -48,8 +40,11 @@
     }
 
     <button class="primary-button" type="submit" [disabled]="busy()">
-      @if (busy()) { <span class="spinner" aria-hidden="true"></span> Analyzing catalog... }
-      @else { Find upgrades <span aria-hidden="true">→</span> }
+      @if (busy()) {
+        <span class="spinner" aria-hidden="true"></span> Analyzing catalog...
+      } @else {
+        Find upgrades <span aria-hidden="true">→</span>
+      }
     </button>
   </form>
 </section>

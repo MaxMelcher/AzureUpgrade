@@ -7,7 +7,7 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "qa:recommendations": "tsc -p tsconfig.qa.json && node .qa-build/tools/Generate-RecommendationMatrix.js uksouth quality-check/recommendations-uksouth-linux.csv"
+    "qa:recommendations": "tsc -p tsconfig.qa.json && node .qa-build/tools/Generate-RecommendationMatrix.js uksouth quality-check/recommendations-uksouth-linux-family.csv"
   },
   "private": true,
   "packageManager": "npm@11.15.0",

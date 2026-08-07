@@ -47,6 +47,12 @@
     "generation": 4,
     "description": "Intel Xeon Platinum 8370C based Dsv5 family"
   },
+  "standardDDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "description": "Intel Xeon Platinum 8370C based Ddsv5 family"
+  },
   "standardEDSv4Family": {
     "vendor": "Intel",
     "architecture": "x64",
