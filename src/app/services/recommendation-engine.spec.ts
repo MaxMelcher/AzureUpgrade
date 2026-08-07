@@ -58,6 +58,44 @@ describe('RecommendationEngine', () => {
     expect(result.rejected.tempDisk).toBe(1);
   });
 
+  it('prevents Windows from resizing from no local temp disk to a size with one', () => {
+    const source = vm({ tempDiskMB: 0 });
+    const withTempDisk = vm({
+      name: 'Standard_D4ads_v5',
+      tempDiskMB: 76800,
+      prices: prices(0.05, 0.1),
+    });
+    const noTempDisk = vm({
+      name: 'Standard_D4as_v5',
+      tempDiskMB: 0,
+      prices: prices(0.14, 0.2),
+    });
+    const result = engine(source, withTempDisk, noTempDisk).findRecommendations(
+      source.name,
+      'westeurope',
+      'windows',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_D4as_v5');
+    expect(result.rejected.tempDisk).toBe(1);
+  });
+
+  it('allows Linux to resize from no local temp disk to a size with one', () => {
+    const source = vm({ tempDiskMB: 0 });
+    const withTempDisk = vm({
+      name: 'Standard_D4ads_v5',
+      tempDiskMB: 76800,
+      prices: prices(0.05),
+    });
+    const result = engine(source, withTempDisk).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_D4ads_v5');
+    expect(result.rejected.tempDisk).toBe(0);
+    expect(result.explanation).toContain('with local temporary storage');
+  });
+
   it('preserves usable vCPU for a constrained-vCPU source without favoring physical CPU count', () => {
     const source = vm({
       name: 'Standard_E16-4as_v4',

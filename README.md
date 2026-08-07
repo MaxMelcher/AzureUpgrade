@@ -7,7 +7,7 @@ The matcher never infers hardware from SKU-name letters. Temporary storage, usab
 ## Features
 
 - Regional, case-insensitive lookup for pasted VM lists
-- Linux PAYG recommendations in the UI, with both Linux and Windows prices retained in generated data
+- Linux and Windows PAYG recommendations in USD, EUR, or GBP
 - Hard compatibility filters for usable vCPU, GPU count, memory, architecture, Premium IO, accelerated networking, and RDMA
 - Constrained-vCPU candidates only for constrained sources, OS-specific local temp-disk resize rules, and surfaced data-disk-limit risks
 - Correct constrained-vCPU handling
@@ -31,15 +31,17 @@ The matcher never infers hardware from SKU-name letters. Temporary storage, usab
 az login
 
 pwsh ./tools/Generate-VmCatalog.ps1 `
-    -Regions uksouth `
-    -CurrencyCode GBP
+    -Regions uksouth
 ```
 
 Generate every physical Azure region:
 
 ```powershell
-pwsh ./tools/Generate-VmCatalog.ps1 -AllRegions -CurrencyCode GBP
+pwsh ./tools/Generate-VmCatalog.ps1 -AllRegions
 ```
+
+By default, the generator creates USD, EUR, and GBP catalogs. Use
+`-CurrencyCode GBP` or `-CurrencyCode USD,EUR` to generate only selected currencies.
 
 The generator:
 
@@ -52,7 +54,9 @@ The generator:
 7. Merges curated CPU metadata from `src/assets/data/cpu-families.json`.
 8. Atomically writes compact UTF-8 JSON without a BOM.
 
-Missing capabilities and prices remain `null`; they are never guessed. Azure-reported SKU restrictions remain in the catalog for diagnostics and do not erase regional availability.
+Missing capabilities and prices remain `null`; they are never guessed. Azure-reported SKU restrictions
+remain in the catalog; candidates marked `NotAvailableForSubscription` in the selected location are
+excluded without claiming that the SKU is absent from the region for every subscription.
 
 ## Develop and validate
 
@@ -84,8 +88,14 @@ src/assets/data/
   regions.json
   cpu-families.json
   retirements.json
+  workload-families.json
   regions/
-    <region>.json
+    usd/
+      <region>.json
+    eur/
+      <region>.json
+    gbp/
+      <region>.json
 ```
 
 `cpu-families.json` is curated CPU metadata. `retirements.json` contains family identifiers and exact
@@ -96,4 +106,6 @@ unknown and reduce recommendation confidence.
 
 ## Cost estimates
 
-Monthly cost is hourly price x 730; yearly cost is hourly price x 8,760. Prices are public retail estimates and do not include negotiated discounts, subscription offers, Azure Hybrid Benefit, or deployment-specific licensing.
+Monthly cost is hourly price x 730; yearly cost is hourly price x 8,760. USD, EUR, and GBP values
+come directly from Azure's Retail Prices API. Prices are public retail estimates and do not include
+negotiated discounts, subscription offers, Azure Hybrid Benefit, or deployment-specific licensing.

@@ -6,6 +6,7 @@ import {
   RegionalCatalog,
   RetirementCatalog,
   WorkloadCatalog,
+  CurrencyCode,
 } from '../models/vm.models';
 import { applyRetirementMetadata } from './retirement-metadata';
 import { applyWorkloadMetadata } from './workload-metadata';
@@ -25,22 +26,26 @@ export class CatalogService {
     return this.http.get<RegionInfo[]>('assets/data/regions.json').pipe(shareReplay(1));
   }
 
-  public loadRegion(region: string): Observable<RegionalCatalog> {
+  public loadRegion(region: string, currency: CurrencyCode): Observable<RegionalCatalog> {
     const normalized = region.toLowerCase();
-    const cached = this.regionCache.get(normalized);
+    const normalizedCurrency = currency.toLowerCase();
+    const cacheKey = `${normalizedCurrency}/${normalized}`;
+    const cached = this.regionCache.get(cacheKey);
     if (cached) {
       return of(cached);
     }
 
     return forkJoin({
-      catalog: this.http.get<RegionalCatalog>(`assets/data/regions/${normalized}.json`),
+      catalog: this.http.get<RegionalCatalog>(
+        `assets/data/regions/${normalizedCurrency}/${normalized}.json`,
+      ),
       retirements: this.retirementMetadata,
       workloads: this.workloadMetadata,
     }).pipe(
       map(({ catalog, retirements, workloads }) =>
         applyWorkloadMetadata(applyRetirementMetadata(catalog, retirements), workloads),
       ),
-      tap((catalog) => this.regionCache.set(normalized, catalog)),
+      tap((catalog) => this.regionCache.set(cacheKey, catalog)),
       shareReplay(1),
     );
   }

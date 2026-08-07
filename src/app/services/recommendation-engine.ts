@@ -362,6 +362,8 @@ export class RecommendationEngine {
       reasons.push('local temporary storage retained');
     } else if ((source.tempDiskMB ?? 0) > 0) {
       reasons.push('Linux supports resizing to a VM without local temporary storage');
+    } else if ((candidate.tempDiskMB ?? 0) > 0) {
+      reasons.push('Linux supports resizing to a VM with local temporary storage');
     }
     if (source.premiumIO) reasons.push('Premium SSD supported');
     if (

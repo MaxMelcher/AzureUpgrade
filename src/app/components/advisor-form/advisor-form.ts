@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CpuPolicy, RegionInfo } from '../../models/vm.models';
+import { CpuPolicy, CurrencyCode, OperatingSystem, RegionInfo } from '../../models/vm.models';
 
 export interface AdvisorRequest {
   region: string;
-  os: 'linux';
+  os: OperatingSystem;
+  currency: CurrencyCode;
   cpuPolicy: CpuPolicy;
   requireUpgradeForEol: boolean;
   skus: string[];
@@ -24,6 +25,8 @@ export class AdvisorFormComponent {
   public readonly findUpgrades = output<AdvisorRequest>();
 
   protected region = '';
+  protected os: OperatingSystem = 'linux';
+  protected currency: CurrencyCode = 'GBP';
   protected cpuPolicy: CpuPolicy = 'prefer-same-vendor';
   protected requireUpgradeForEol = false;
   protected skuInput = [
@@ -75,7 +78,8 @@ export class AdvisorFormComponent {
     this.validationError.set('');
     this.findUpgrades.emit({
       region: this.region,
-      os: 'linux',
+      os: this.os,
+      currency: this.currency,
       cpuPolicy: this.cpuPolicy,
       requireUpgradeForEol: this.requireUpgradeForEol,
       skus,

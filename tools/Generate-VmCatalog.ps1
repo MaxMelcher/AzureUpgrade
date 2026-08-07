@@ -8,8 +8,8 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'All')]
     [switch] $AllRegions,
 
-    [ValidatePattern('^[A-Z]{3}$')]
-    [string] $CurrencyCode = 'GBP',
+    [ValidateSet('USD', 'EUR', 'GBP')]
+    [string[]] $CurrencyCode = @('USD', 'EUR', 'GBP'),
 
     [string] $OutputPath = (Join-Path $PSScriptRoot '..\src\assets\data')
 )
@@ -321,8 +321,12 @@ $cpuRaw = Get-Content -LiteralPath $cpuPath -Raw | ConvertFrom-Json
 $cpuLookup = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($property in $cpuRaw.PSObject.Properties) { $cpuLookup[$property.Name] = $property.Value }
 
-$regionOutputPath = Join-Path $OutputPath 'regions'
-[IO.Directory]::CreateDirectory($regionOutputPath) | Out-Null
+$currencyCodes = @($CurrencyCode | ForEach-Object { $_.ToUpperInvariant() } | Sort-Object -Unique)
+$regionOutputRoot = Join-Path $OutputPath 'regions'
+[IO.Directory]::CreateDirectory($regionOutputRoot) | Out-Null
+foreach ($currency in $currencyCodes) {
+    [IO.Directory]::CreateDirectory((Join-Path $regionOutputRoot $currency.ToLowerInvariant())) | Out-Null
+}
 $regionIndex = [Collections.Generic.List[object]]::new()
 $generatedAt = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 
@@ -344,38 +348,42 @@ for ($index = 0; $index -lt $selectedRegions.Count; $index++) {
         $_.resourceType -eq 'virtualMachines' -and $_.locations -contains $region
     } | Sort-Object name)
 
-    Write-Host '  Downloading Azure Retail Prices...'
-    $retailPrices = Get-RetailPrices -Region $region -Currency $CurrencyCode
-    $priceLookup = New-PriceLookup -RetailPrices $retailPrices
+    foreach ($currency in $currencyCodes) {
+        $script:RegionAmbiguities = 0
+        Write-Host "  Downloading Azure Retail Prices ($currency)..."
+        $retailPrices = Get-RetailPrices -Region $region -Currency $currency
+        $priceLookup = New-PriceLookup -RetailPrices $retailPrices
 
-    Write-Host '  Normalizing catalog...'
-    $normalized = @($rawSkus | ForEach-Object {
-        Convert-Sku -Sku $_ -Region $region -PriceLookup $priceLookup -CpuLookup $cpuLookup
-    })
+        Write-Host "  Normalizing $currency catalog..."
+        $normalized = @($rawSkus | ForEach-Object {
+            Convert-Sku -Sku $_ -Region $region -PriceLookup $priceLookup -CpuLookup $cpuLookup
+        })
 
-    $catalog = [ordered] @{
-        schemaVersion = 1
-        generatedAt = $generatedAt
-        currencyCode = $CurrencyCode
-        region = $region
-        displayName = $displayName
-        skus = $normalized
+        $catalog = [ordered] @{
+            schemaVersion = 1
+            generatedAt = $generatedAt
+            currencyCode = $currency
+            region = $region
+            displayName = $displayName
+            skus = $normalized
+        }
+        $currencyOutputPath = Join-Path $regionOutputRoot $currency.ToLowerInvariant()
+        Write-DeterministicJson -Value $catalog -Path (Join-Path $currencyOutputPath "$region.json")
+
+        $linuxCount = @($normalized | Where-Object { $null -ne $_.prices.linuxPaygHourly }).Count
+        $windowsCount = @($normalized | Where-Object { $null -ne $_.prices.windowsPaygHourly }).Count
+        $cpuCount = @($normalized | Where-Object { $null -ne $_.cpuVendor -and $null -ne $_.cpuGeneration }).Count
+        Write-Host "  $currency`: $($normalized.Count) VM SKUs"
+        Write-Host "  $currency`: $linuxCount with Linux price"
+        Write-Host "  $currency`: $windowsCount with Windows price"
+        Write-Host "  $currency`: $cpuCount with complete CPU metadata"
+        Write-Host "  $currency`: $script:RegionAmbiguities pricing ambiguities"
     }
-    Write-DeterministicJson -Value $catalog -Path (Join-Path $regionOutputPath "$region.json")
-
-    $linuxCount = @($normalized | Where-Object { $null -ne $_.prices.linuxPaygHourly }).Count
-    $windowsCount = @($normalized | Where-Object { $null -ne $_.prices.windowsPaygHourly }).Count
-    $cpuCount = @($normalized | Where-Object { $null -ne $_.cpuVendor -and $null -ne $_.cpuGeneration }).Count
-    Write-Host "  $($normalized.Count) VM SKUs"
-    Write-Host "  $linuxCount with Linux price"
-    Write-Host "  $windowsCount with Windows price"
-    Write-Host "  $cpuCount with complete CPU metadata"
-    Write-Host "  $script:RegionAmbiguities pricing ambiguities"
 
     $regionIndex.Add([ordered] @{
         name = $region
         displayName = $displayName
-        skuCount = $normalized.Count
+        skuCount = $rawSkus.Count
         generatedAt = $generatedAt
     })
 }
@@ -383,11 +391,14 @@ for ($index = 0; $index -lt $selectedRegions.Count; $index++) {
 $regionIndex = @($regionIndex | Sort-Object displayName)
 Write-DeterministicJson -Value $regionIndex -Path (Join-Path $OutputPath 'regions.json')
 
-$selectedFileNames = @($selectedRegions | ForEach-Object { "$_.json" })
-Get-ChildItem -LiteralPath $regionOutputPath -Filter '*.json' -File | Where-Object {
-    $_.Name -notin $selectedFileNames
-} | ForEach-Object {
-    Remove-Item -LiteralPath $_.FullName -Force
+foreach ($currency in $currencyCodes) {
+    $currencyOutputPath = Join-Path $regionOutputRoot $currency.ToLowerInvariant()
+    $selectedFileNames = @($selectedRegions | ForEach-Object { "$_.json" })
+    Get-ChildItem -LiteralPath $currencyOutputPath -Filter '*.json' -File | Where-Object {
+        $_.Name -notin $selectedFileNames
+    } | ForEach-Object {
+        Remove-Item -LiteralPath $_.FullName -Force
+    }
 }
 
 Write-Progress -Activity 'Generating Azure VM catalog' -Completed

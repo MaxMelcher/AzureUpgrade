@@ -19,6 +19,33 @@
       </label>
 
       <label>
+        <span>Operating system</span>
+        <select name="os" [(ngModel)]="os">
+          <option value="linux">Linux</option>
+          <option value="windows">Windows</option>
+        </select>
+        <small class="control-note">
+          Linux can resize between sizes with and without a local temp disk. Windows must keep the
+          same temp-disk presence.
+          <a
+            href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/resize-vm?tabs=portal#limitations"
+            target="_blank"
+            rel="noreferrer"
+            >Resize limitations</a
+          >
+        </small>
+      </label>
+
+      <label>
+        <span>Currency</span>
+        <select name="currency" [(ngModel)]="currency">
+          <option value="USD">US dollar (USD)</option>
+          <option value="EUR">Euro (EUR)</option>
+          <option value="GBP">Pound sterling (GBP)</option>
+        </select>
+      </label>
+
+      <label>
         <span>CPU policy</span>
         <select name="cpuPolicy" [(ngModel)]="cpuPolicy">
           <option value="same-vendor">Same vendor only</option>

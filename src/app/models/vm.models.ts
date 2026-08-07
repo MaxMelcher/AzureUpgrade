@@ -1,4 +1,5 @@
 export type OperatingSystem = 'linux' | 'windows';
+export type CurrencyCode = 'USD' | 'EUR' | 'GBP';
 export type CpuPolicy = 'same-vendor' | 'prefer-same-vendor' | 'any-compatible';
 export type Confidence = 'High' | 'Medium' | 'Low';
 
@@ -77,7 +78,7 @@ export interface RegionInfo {
 export interface RegionalCatalog {
   schemaVersion: number;
   generatedAt: string;
-  currencyCode: string;
+  currencyCode: CurrencyCode;
   region: string;
   displayName: string;
   skus: VmSku[];

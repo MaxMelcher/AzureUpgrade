@@ -7,7 +7,8 @@ import { applyWorkloadMetadata } from '../src/app/services/workload-metadata';
 
 const root = resolve(__dirname, '..', '..');
 const region = process.argv[2] ?? 'uksouth';
-const inputPath = resolve(root, 'src/assets/data/regions', `${region}.json`);
+const currency = (process.argv[4] ?? 'GBP').toLowerCase();
+const inputPath = resolve(root, 'src/assets/data/regions', currency, `${region}.json`);
 const outputPath = resolve(
   root,
   process.argv[3] ?? 'quality-check/recommendations-uksouth-linux-family.csv',

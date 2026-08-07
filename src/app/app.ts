@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { AdvisorFormComponent, AdvisorRequest } from './components/advisor-form/advisor-form';
 import { ResultsListComponent } from './components/results-list/results-list';
-import { RegionInfo, RecommendationResult } from './models/vm.models';
+import { CurrencyCode, RegionInfo, RecommendationResult } from './models/vm.models';
 import { CatalogService } from './services/catalog.service';
 import { ExportService } from './services/export.service';
 import { RecommendationEngine } from './services/recommendation-engine';
@@ -105,7 +105,7 @@ export class App implements OnInit {
   protected readonly busy = signal(false);
   protected readonly busyMatrix = signal(false);
   protected readonly selectedRegionName = signal('');
-  protected readonly currencyCode = signal('GBP');
+  protected readonly currencyCode = signal<CurrencyCode>('GBP');
   protected readonly catalogRefreshedAt = signal<string | null>(null);
   private lastRequest: AdvisorRequest | null = null;
   private engine: RecommendationEngine | null = null;
@@ -133,7 +133,7 @@ export class App implements OnInit {
     this.results.set([]);
     this.lastRequest = request;
 
-    this.catalogService.loadRegion(request.region).subscribe({
+    this.catalogService.loadRegion(request.region, request.currency).subscribe({
       next: (catalog) => {
         this.engine = new RecommendationEngine(catalog);
         this.selectedRegionName.set(catalog.displayName);
@@ -166,7 +166,7 @@ export class App implements OnInit {
     this.exportService.downloadResults(
       this.results(),
       this.currencyCode(),
-      `azure-vm-upgrades-${this.lastRequest?.region ?? 'results'}.csv`,
+      `azure-vm-upgrades-${this.lastRequest?.region ?? 'results'}-${this.lastRequest?.os ?? 'os'}-${this.currencyCode().toLowerCase()}.csv`,
     );
   }
 
@@ -177,11 +177,11 @@ export class App implements OnInit {
 
     this.busyMatrix.set(true);
     window.setTimeout(() => {
-      const rows = this.engine!.createQualityMatrix();
+      const rows = this.engine!.createQualityMatrix([this.lastRequest!.os]);
       this.exportService.downloadQualityMatrix(
         rows,
         this.currencyCode(),
-        `recommendation-quality-matrix-${this.lastRequest!.region}.csv`,
+        `recommendation-quality-matrix-${this.lastRequest!.region}-${this.lastRequest!.os}-${this.currencyCode().toLowerCase()}.csv`,
       );
       this.busyMatrix.set(false);
     });
