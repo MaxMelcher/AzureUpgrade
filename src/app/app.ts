@@ -141,7 +141,13 @@ export class App implements OnInit {
         this.currencyCode.set(catalog.currencyCode);
         this.results.set(
           request.skus.map((sku) =>
-            this.engine!.findRecommendations(sku, request.region, request.os, request.cpuPolicy),
+            this.engine!.findRecommendations(
+              sku,
+              request.region,
+              request.os,
+              request.cpuPolicy,
+              request.requireUpgradeForEol,
+            ),
           ),
         );
         this.busy.set(false);

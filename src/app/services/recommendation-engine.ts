@@ -11,6 +11,11 @@ import {
 } from '../models/vm.models';
 
 const CPU_POLICIES: CpuPolicy[] = ['same-vendor', 'prefer-same-vendor', 'any-compatible'];
+const BURSTABLE_FAMILIES = new Set([
+  'standardbsfamily',
+  'standardbasv2family',
+  'standardbsv2family',
+]);
 
 export class RecommendationEngine {
   private readonly skuLookup: Map<string, VmSku>;
@@ -24,6 +29,7 @@ export class RecommendationEngine {
     region: string,
     os: OperatingSystem,
     cpuPolicy: CpuPolicy = 'prefer-same-vendor',
+    requireUpgradeForEol = false,
   ): RecommendationResult {
     const source = this.skuLookup.get(sourceSku.trim().toLowerCase()) ?? null;
     const rejected = this.emptyStatistics();
@@ -41,7 +47,8 @@ export class RecommendationEngine {
     }
 
     const sourcePrice = this.priceFor(source, os);
-    const mandatoryUpgrade = this.isRetired(source);
+    const mandatoryUpgrade =
+      this.isRetired(source) || (requireUpgradeForEol && source.retirement !== null);
     const sourceMissing = this.missingCriticalCapabilities(source);
     if (sourceMissing.length > 0) {
       return {
@@ -105,6 +112,26 @@ export class RecommendationEngine {
       };
     }
 
+    if (
+      source.retirement === null &&
+      !this.isMaterialUpgrade(source, recommendation.vm, sourcePrice, recommendation.hourlyPrice)
+    ) {
+      return {
+        ...this.emptyResult(
+          sourceSku,
+          region,
+          os,
+          'no-upgrade-needed',
+          'The current VM has no announced EOL, and no candidate provides a material price or same-vendor generation improvement.',
+          rejected,
+        ),
+        source,
+        alternatives: candidates.slice(0, 3),
+        confidence: this.confidenceFor(source, recommendation.vm),
+        mandatoryUpgrade: false,
+      };
+    }
+
     return {
       inputSku: sourceSku,
       status: sourcePrice === null ? 'source-price-missing' : 'recommended',
@@ -114,7 +141,13 @@ export class RecommendationEngine {
       recommendation,
       alternatives: candidates.slice(1, 4),
       rejected,
-      explanation: this.explain(source, recommendation.vm, sourcePrice, recommendation.hourlyPrice),
+      explanation: this.explain(
+        source,
+        recommendation.vm,
+        sourcePrice,
+        recommendation.hourlyPrice,
+        mandatoryUpgrade,
+      ),
       confidence: this.confidenceFor(source, recommendation.vm),
       mandatoryUpgrade,
     };
@@ -213,6 +246,7 @@ export class RecommendationEngine {
     if (this.priceFor(candidate, os) === null) return 'price';
     if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
     if (!this.isConstrained(source) && this.isConstrained(candidate)) return 'constrainedShape';
+    if (!this.isBurstable(source) && this.isBurstable(candidate)) return 'burstableClass';
     if ((source.gpus ?? 0) > 0 && !this.atLeast(candidate.gpus, source.gpus)) return 'gpus';
     if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
     if (os === 'windows' && (source.tempDiskMB ?? 0) > 0 !== (candidate.tempDiskMB ?? 0) > 0)
@@ -226,6 +260,8 @@ export class RecommendationEngine {
     if (cpuPolicy === 'same-vendor' && source.cpuVendor && candidate.cpuVendor !== source.cpuVendor)
       return 'cpuVendor';
     if (
+      source.cpuVendor !== null &&
+      source.cpuVendor === candidate.cpuVendor &&
       source.cpuGeneration !== null &&
       candidate.cpuGeneration !== null &&
       candidate.cpuGeneration < source.cpuGeneration
@@ -248,8 +284,8 @@ export class RecommendationEngine {
       (candidate.vcpus ?? candidate.vcpusAvailable!) - (source.vcpus ?? source.vcpusAvailable!),
     );
 
-    score += usableCpuDelta === 0 ? 500 : -usableCpuDelta * 90;
-    score += memoryDelta === 0 ? 450 : -memoryDelta * 18;
+    score += usableCpuDelta === 0 ? 350 : -usableCpuDelta * 90;
+    score += memoryDelta === 0 ? 300 : -memoryDelta * 18;
     score -= physicalCpuDelta * 12;
     score += this.isConstrained(source) === this.isConstrained(candidate) ? 120 : -120;
 
@@ -267,7 +303,12 @@ export class RecommendationEngine {
       score -= 180;
     }
 
-    if (source.cpuGeneration !== null && candidate.cpuGeneration !== null) {
+    if (
+      source.cpuVendor &&
+      source.cpuVendor === candidate.cpuVendor &&
+      source.cpuGeneration !== null &&
+      candidate.cpuGeneration !== null
+    ) {
       const generationDelta = candidate.cpuGeneration - source.cpuGeneration;
       score += generationDelta > 0 ? 320 + Math.min(generationDelta, 3) * 25 : 40;
     } else {
@@ -278,11 +319,13 @@ export class RecommendationEngine {
       score += candidate.tempDiskMB === source.tempDiskMB ? 90 : 40;
     }
 
-    const priceDeltaPercent =
-      sourcePrice !== null && sourcePrice > 0
-        ? ((sourcePrice - candidatePrice) / sourcePrice) * 100
-        : 0;
-    score += Math.max(-180, Math.min(180, priceDeltaPercent * 3));
+    if (sourcePrice !== null && sourcePrice > 0) {
+      const priceRatio = candidatePrice / sourcePrice;
+      score +=
+        priceRatio <= 1
+          ? Math.min(300, (1 - priceRatio) * 400)
+          : -Math.min(1000, Math.log2(priceRatio) * 250);
+    }
     return Math.round(score * 100) / 100;
   }
 
@@ -291,6 +334,7 @@ export class RecommendationEngine {
     candidate: VmSku,
     sourcePrice: number | null,
     candidatePrice: number,
+    mandatoryUpgrade: boolean,
   ): string {
     const reasons: string[] = [];
     if (
@@ -343,9 +387,13 @@ export class RecommendationEngine {
       );
     }
     const explanation = `${this.sentenceList(reasons)}.`;
-    return this.isRetired(source)
-      ? `This VM retired on ${source.retirement!.eolDate}; upgrading is required. ${explanation}`
-      : explanation;
+    if (!source.retirement) return explanation;
+    if (this.isRetired(source)) {
+      return `This VM retired on ${source.retirement.eolDate}; upgrading is required. ${explanation}`;
+    }
+    return mandatoryUpgrade
+      ? `This VM has an announced EOL of ${source.retirement.eolDate}; the selected policy makes upgrading required. ${explanation}`
+      : `This VM has an announced EOL of ${source.retirement.eolDate}; migration can be planned before that date. ${explanation}`;
   }
 
   private confidenceFor(source: VmSku, candidate: VmSku | null): Confidence {
@@ -395,6 +443,7 @@ export class RecommendationEngine {
       price: 0,
       usableVcpus: 0,
       constrainedShape: 0,
+      burstableClass: 0,
       gpus: 0,
       memory: 0,
       dataDisks: 0,
@@ -440,6 +489,26 @@ export class RecommendationEngine {
 
   private isConstrained(vm: VmSku): boolean {
     return vm.vcpus !== null && vm.vcpusAvailable !== null && vm.vcpusAvailable < vm.vcpus;
+  }
+
+  private isBurstable(vm: VmSku): boolean {
+    return BURSTABLE_FAMILIES.has(vm.family.toLowerCase());
+  }
+
+  private isMaterialUpgrade(
+    source: VmSku,
+    candidate: VmSku,
+    sourcePrice: number | null,
+    candidatePrice: number,
+  ): boolean {
+    if (sourcePrice !== null && candidatePrice < sourcePrice * 0.99) return true;
+    return (
+      source.cpuVendor !== null &&
+      source.cpuVendor === candidate.cpuVendor &&
+      source.cpuGeneration !== null &&
+      candidate.cpuGeneration !== null &&
+      candidate.cpuGeneration > source.cpuGeneration
+    );
   }
 
   private sentenceList(values: string[]): string {

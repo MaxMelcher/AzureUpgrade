@@ -47,7 +47,7 @@ describe('RecommendationEngine', () => {
     const withTempDisk = vm({
       name: 'Standard_D4ads_v5',
       tempDiskMB: 76800,
-      prices: prices(0.14),
+      prices: prices(0.14, 0.2),
     });
     const result = engine(source, noTempDisk, withTempDisk).findRecommendations(
       source.name,
@@ -286,6 +286,131 @@ describe('RecommendationEngine', () => {
     expect(result.explanation).toContain('upgrading is required');
   });
 
+  it('only makes a future announced EOL mandatory when the user enables the policy', () => {
+    const source = vm({
+      retirement: {
+        eolDate: '2099-01-01',
+        description: 'Scheduled test retirement',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+    });
+    const replacement = vm({
+      name: 'Standard_D4ads_v6',
+      cpuGeneration: 4,
+      prices: prices(0.15),
+    });
+    const advisor = engine(source, replacement);
+    const optional = advisor.findRecommendations(source.name, 'westeurope', 'linux');
+    const required = advisor.findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+      'prefer-same-vendor',
+      true,
+    );
+    expect(optional.mandatoryUpgrade).toBe(false);
+    expect(optional.explanation).toContain('migration can be planned');
+    expect(required.mandatoryUpgrade).toBe(true);
+    expect(required.explanation).toContain('selected policy makes upgrading required');
+  });
+
+  it('prefers a much cheaper compatible B-series size over exact CPU matching', () => {
+    const source = vm({
+      name: 'Standard_B1ls',
+      family: 'standardBSFamily',
+      vcpus: 1,
+      vcpusAvailable: 1,
+      memoryGB: 0.5,
+      tempDiskMB: 4096,
+      cpuVendor: 'Intel',
+      cpuGeneration: 2,
+      prices: prices(0.0045),
+      retirement: {
+        eolDate: '2028-11-15',
+        description: 'B-series retirement',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+    });
+    const expensiveExact = vm({
+      name: 'Standard_F1als_v7',
+      vcpus: 1,
+      vcpusAvailable: 1,
+      memoryGB: 2,
+      tempDiskMB: 0,
+      cpuVendor: null,
+      cpuGeneration: null,
+      prices: prices(0.0533),
+    });
+    const cheaperCompatible = vm({
+      name: 'Standard_B2ts_v2',
+      vcpus: 2,
+      vcpusAvailable: 2,
+      memoryGB: 1,
+      tempDiskMB: 0,
+      cpuVendor: 'Intel',
+      cpuGeneration: 5,
+      prices: prices(0.0089),
+    });
+    const result = engine(source, expensiveExact, cheaperCompatible).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_B2ts_v2');
+  });
+
+  it('keeps a modern AMD source when the only exact candidate is costlier Intel', () => {
+    const source = vm({
+      name: 'Standard_B2ats_v2',
+      family: 'standardBasv2Family',
+      vcpus: 2,
+      vcpusAvailable: 2,
+      memoryGB: 1,
+      tempDiskMB: 0,
+      cpuVendor: 'AMD',
+      cpuGeneration: 3,
+      prices: prices(0.008),
+    });
+    const intel = vm({
+      name: 'Standard_B2ts_v2',
+      family: 'standardBsv2Family',
+      vcpus: 2,
+      vcpusAvailable: 2,
+      memoryGB: 1,
+      tempDiskMB: 0,
+      cpuVendor: 'Intel',
+      cpuGeneration: 5,
+      prices: prices(0.0089),
+    });
+    const result = engine(source, intel).findRecommendations(source.name, 'westeurope', 'linux');
+    expect(result.status).toBe('no-upgrade-needed');
+    expect(result.recommendation).toBeNull();
+  });
+
+  it('never treats a burstable target as an upgrade for a non-burstable source', () => {
+    const source = vm({
+      name: 'Standard_E2ds_v5',
+      family: 'standardEDSv5Family',
+      cpuVendor: 'Intel',
+      cpuGeneration: 4,
+      prices: prices(0.128),
+    });
+    const burstable = vm({
+      name: 'Standard_B4s_v2',
+      family: 'standardBsv2Family',
+      cpuVendor: 'Intel',
+      cpuGeneration: 5,
+      prices: prices(0.1432),
+    });
+    const result = engine(source, burstable).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.status).toBe('no-compatible-replacement');
+    expect(result.rejected.burstableClass).toBe(1);
+  });
+
   it('never replaces a GPU source with a non-GPU candidate', () => {
     const source = vm({ name: 'Standard_NC6s_v3', gpus: 1 });
     const cpuOnly = vm({
@@ -300,6 +425,7 @@ describe('RecommendationEngine', () => {
       vcpus: 8,
       vcpusAvailable: 8,
       gpus: 1,
+      cpuGeneration: 3,
       prices: prices(0.2),
     });
     const result = engine(source, cpuOnly, gpuCandidate).findRecommendations(

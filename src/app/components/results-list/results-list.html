@@ -69,7 +69,11 @@
 
                 <div class="vm recommended" data-label="Recommended VM">
                   <small>Recommended VM</small>
-                  <strong>{{ result.recommendation?.vm?.name ?? 'No recommendation' }}</strong>
+                  <strong>{{
+                    result.status === 'no-upgrade-needed'
+                      ? 'Keep current VM'
+                      : (result.recommendation?.vm?.name ?? 'No recommendation')
+                  }}</strong>
                   @if (result.recommendation) {
                     <span
                       >{{ result.recommendation.vm.vcpusAvailable }} vCPU ·

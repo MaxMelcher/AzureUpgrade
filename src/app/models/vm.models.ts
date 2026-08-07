@@ -77,6 +77,7 @@ export interface RejectedCandidateStatistics {
   price: number;
   usableVcpus: number;
   constrainedShape: number;
+  burstableClass: number;
   gpus: number;
   memory: number;
   dataDisks: number;
@@ -95,6 +96,7 @@ export type RecommendationStatus =
   | 'sku-not-found'
   | 'source-price-missing'
   | 'incomplete-capabilities'
+  | 'no-upgrade-needed'
   | 'no-compatible-replacement';
 
 export interface CandidateRecommendation {

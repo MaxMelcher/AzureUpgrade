@@ -33,14 +33,21 @@ export class ResultsListComponent {
     );
     const mandatory = sorted.filter((result) => result.mandatoryUpgrade);
     const saving = sorted.filter(
-      (result) => !result.mandatoryUpgrade && (result.recommendation?.monthlySaving ?? 0) > 0,
+      (result) => !result.mandatoryUpgrade && (result.recommendation?.monthlySaving ?? 0) > 0.005,
+    );
+    const neutral = sorted.filter(
+      (result) =>
+        !result.mandatoryUpgrade &&
+        result.recommendation?.monthlySaving !== null &&
+        result.recommendation !== null &&
+        Math.abs(result.recommendation.monthlySaving) <= 0.005,
     );
     const increase = sorted.filter(
       (result) =>
         !result.mandatoryUpgrade &&
         result.recommendation?.monthlySaving !== null &&
         result.recommendation !== null &&
-        result.recommendation.monthlySaving <= 0,
+        result.recommendation.monthlySaving < -0.005,
     );
     const unavailable = sorted.filter(
       (result) =>
@@ -62,9 +69,15 @@ export class ResultsListComponent {
         results: saving,
       },
       {
+        key: 'neutral',
+        title: 'No monthly price change',
+        description: 'Compatible upgrades with no material monthly retail price difference.',
+        results: neutral,
+      },
+      {
         key: 'increase',
         title: 'Monthly cost increase',
-        description: 'Compatible upgrades that cost the same or more per month.',
+        description: 'Compatible upgrades with a strictly higher estimated monthly cost.',
         results: increase,
       },
       {

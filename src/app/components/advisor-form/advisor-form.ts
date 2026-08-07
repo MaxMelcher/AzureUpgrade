@@ -6,6 +6,7 @@ export interface AdvisorRequest {
   region: string;
   os: 'linux';
   cpuPolicy: CpuPolicy;
+  requireUpgradeForEol: boolean;
   skus: string[];
 }
 
@@ -24,6 +25,7 @@ export class AdvisorFormComponent {
 
   protected region = '';
   protected cpuPolicy: CpuPolicy = 'prefer-same-vendor';
+  protected requireUpgradeForEol = false;
   protected skuInput = [
     'Standard_DS3_v2',
     'Standard_E32ds_v4',
@@ -71,7 +73,13 @@ export class AdvisorFormComponent {
     }
 
     this.validationError.set('');
-    this.findUpgrades.emit({ region: this.region, os: 'linux', cpuPolicy: this.cpuPolicy, skus });
+    this.findUpgrades.emit({
+      region: this.region,
+      os: 'linux',
+      cpuPolicy: this.cpuPolicy,
+      requireUpgradeForEol: this.requireUpgradeForEol,
+      skus,
+    });
   }
 
   private readStoredRegion(): string | null {

@@ -53,6 +53,24 @@
     "generation": 4,
     "description": "Intel Xeon Platinum 8370C based Ddsv5 family"
   },
+  "standardBSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "description": "Intel Xeon based B-series v1 family"
+  },
+  "standardBasv2Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "description": "AMD EPYC based Basv2 family"
+  },
+  "standardBsv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "description": "Intel Xeon based Bsv2 family"
+  },
   "standardEDSv4Family": {
     "vendor": "Intel",
     "architecture": "x64",

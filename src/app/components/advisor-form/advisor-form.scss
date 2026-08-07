@@ -70,6 +70,31 @@ textarea:focus {
   box-shadow: 0 0 0 3px var(--focus);
 }
 
+.eol-toggle {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.eol-toggle input {
+  accent-color: var(--azure);
+  height: 17px;
+  margin: 2px 0 0;
+  width: 17px;
+}
+.eol-toggle > span {
+  margin: 0;
+}
+.eol-toggle small {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 3px;
+  text-transform: none;
+}
+
 .sku-input {
   display: block;
   margin-top: 22px;
