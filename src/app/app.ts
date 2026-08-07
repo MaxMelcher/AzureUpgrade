@@ -32,8 +32,7 @@ import { RecommendationEngine } from './services/recommendation-engine';
         <p class="eyebrow">Modernize with confidence</p>
         <h1>Find a compatible, modern Azure VM</h1>
         <p class="hero-copy">
-          Compare regional availability, authoritative Azure SKU capabilities, and retail prices
-          without sending your VM inventory to a backend.
+          Compare regional availability, authoritative Azure SKU capabilities, and retail prices.
         </p>
       </section>
 

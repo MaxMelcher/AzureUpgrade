@@ -411,6 +411,79 @@ describe('RecommendationEngine', () => {
     expect(result.rejected.burstableClass).toBe(1);
   });
 
+  it('preserves confidential-compute workload affinity', () => {
+    const source = vm({
+      name: 'Standard_DC2ads_v6',
+      workloadClass: 'confidential-compute',
+      prices: prices(0.3),
+    });
+    const generalPurpose = vm({
+      name: 'Standard_B2as_v2',
+      prices: prices(0.1),
+    });
+    const confidential = vm({
+      name: 'Standard_DC2as_v6',
+      workloadClass: 'confidential-compute',
+      prices: prices(0.2),
+    });
+    const result = engine(source, generalPurpose, confidential).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_DC2as_v6');
+    expect(result.rejected.workloadAffinity).toBe(1);
+  });
+
+  it('rejects candidates unavailable to the catalog subscription in the selected region', () => {
+    const source = vm({ prices: prices(0.3) });
+    const restricted = vm({
+      name: 'Standard_NV6ads_A10_v5',
+      prices: prices(0.1),
+      restrictions: [
+        {
+          type: 'Location',
+          reasonCode: 'NotAvailableForSubscription',
+          values: ['westeurope'],
+        },
+      ],
+    });
+    const available = vm({
+      name: 'Standard_D4ds_v5',
+      prices: prices(0.2),
+    });
+    const result = engine(source, restricted, available).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_D4ds_v5');
+    expect(result.rejected.subscriptionRestriction).toBe(1);
+  });
+
+  it('does not let a moderate data-disk-limit reduction outweigh a meaningful saving', () => {
+    const source = vm({
+      maxDataDisks: 16,
+      prices: prices(0.2),
+    });
+    const cheaper = vm({
+      name: 'Standard_D4s_v6',
+      maxDataDisks: 8,
+      prices: prices(0.17),
+    });
+    const expensive = vm({
+      name: 'Standard_D4ds_v6',
+      maxDataDisks: 16,
+      prices: prices(0.24),
+    });
+    const result = engine(source, cheaper, expensive).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_D4s_v6');
+  });
+
   it('never replaces a GPU source with a non-GPU candidate', () => {
     const source = vm({ name: 'Standard_NC6s_v3', gpus: 1 });
     const cpuOnly = vm({
@@ -485,6 +558,7 @@ function vm(overrides: Partial<VmSku>): VmSku {
     zones: ['1', '2', '3'],
     restrictions: [],
     retirement: null,
+    workloadClass: null,
     prices: prices(),
     ...overrides,
   };

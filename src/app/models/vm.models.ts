@@ -29,6 +29,17 @@ export interface RetirementCatalog {
   skus: Record<string, VmRetirement>;
 }
 
+export type WorkloadClass =
+  | 'confidential-compute'
+  | 'gpu-compute'
+  | 'gpu-training'
+  | 'gpu-visualization'
+  | 'local-nvme';
+
+export interface WorkloadCatalog {
+  families: Record<string, WorkloadClass>;
+}
+
 export interface VmSku {
   name: string;
   family: string;
@@ -52,6 +63,7 @@ export interface VmSku {
   zones: string[];
   restrictions: VmRestriction[];
   retirement: VmRetirement | null;
+  workloadClass: WorkloadClass | null;
   prices: VmPrices;
 }
 
@@ -78,6 +90,8 @@ export interface RejectedCandidateStatistics {
   usableVcpus: number;
   constrainedShape: number;
   burstableClass: number;
+  workloadAffinity: number;
+  subscriptionRestriction: number;
   gpus: number;
   memory: number;
   dataDisks: number;

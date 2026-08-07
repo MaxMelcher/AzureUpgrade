@@ -1,0 +1,31 @@
+{
+  "families": {
+    "standardDCSv3Family": "confidential-compute",
+    "standardDCadsv6Family": "confidential-compute",
+    "standardDCasv6Family": "confidential-compute",
+    "standardDDCSv3Family": "confidential-compute",
+
+    "standardLASv3Family": "local-nvme",
+    "standardLSFamily": "local-nvme",
+    "standardLSv2Family": "local-nvme",
+    "standardLSv3Family": "local-nvme",
+    "standardLaosv4Family": "local-nvme",
+    "standardLasv4Family": "local-nvme",
+    "standardLsv4Family": "local-nvme",
+
+    "Standard NCASv3_T4 Family": "gpu-compute",
+    "StandardNCADSA100v4Family": "gpu-compute",
+    "StandardNCadsH100v5Family": "gpu-compute",
+    "standardNCSv3Family": "gpu-compute",
+
+    "standard NDAMSv4_A100Family": "gpu-training",
+    "standardNDISRGB300V6Family": "gpu-training",
+    "standardNDISRH200V5Family": "gpu-training",
+    "standardNDSH100v5Family": "gpu-training",
+
+    "StandardNVADSA10v5Family": "gpu-visualization",
+    "standardNVSv2Family": "gpu-visualization",
+    "standardNVSv3Family": "gpu-visualization",
+    "standardNVSv4Family": "gpu-visualization"
+  }
+}

@@ -11,3 +11,7 @@ When multiple CPU policies produce the same outcome, they are collapsed into one
 has multiple rows when its recommendation genuinely differs by CPU policy.
 
 The file starts with Excel's `sep=,` directive and a UTF-8 BOM.
+
+The dated audited snapshot is
+`recommendations-uksouth-linux-audited-2026-08-07.csv`. See
+`QUALITY-REPORT.md` for the audit method, corrections, results, and remaining limitations.

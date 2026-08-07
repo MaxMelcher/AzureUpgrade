@@ -243,10 +243,16 @@ export class RecommendationEngine {
   ): keyof Omit<RejectedCandidateStatistics, 'totalCandidates'> | null {
     if (candidate.name === source.name) return 'sourceSku';
     if (candidate.retirement !== null) return 'retirement';
+    if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
     if (this.priceFor(candidate, os) === null) return 'price';
     if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
     if (!this.isConstrained(source) && this.isConstrained(candidate)) return 'constrainedShape';
     if (!this.isBurstable(source) && this.isBurstable(candidate)) return 'burstableClass';
+    if (
+      source.workloadClass !== candidate.workloadClass &&
+      (source.workloadClass !== null || candidate.workloadClass !== null)
+    )
+      return 'workloadAffinity';
     if ((source.gpus ?? 0) > 0 && !this.atLeast(candidate.gpus, source.gpus)) return 'gpus';
     if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
     if (os === 'windows' && (source.tempDiskMB ?? 0) > 0 !== (candidate.tempDiskMB ?? 0) > 0)
@@ -294,7 +300,7 @@ export class RecommendationEngine {
       candidate.maxDataDisks !== null &&
       candidate.maxDataDisks < source.maxDataDisks
     ) {
-      score -= (source.maxDataDisks - candidate.maxDataDisks) * 25;
+      score -= Math.min(100, (source.maxDataDisks - candidate.maxDataDisks) * 12.5);
     }
 
     if (source.cpuVendor && candidate.cpuVendor === source.cpuVendor) {
@@ -444,6 +450,8 @@ export class RecommendationEngine {
       usableVcpus: 0,
       constrainedShape: 0,
       burstableClass: 0,
+      workloadAffinity: 0,
+      subscriptionRestriction: 0,
       gpus: 0,
       memory: 0,
       dataDisks: 0,
@@ -493,6 +501,15 @@ export class RecommendationEngine {
 
   private isBurstable(vm: VmSku): boolean {
     return BURSTABLE_FAMILIES.has(vm.family.toLowerCase());
+  }
+
+  private hasLocationRestriction(vm: VmSku, region: string): boolean {
+    return vm.restrictions.some(
+      (restriction) =>
+        restriction.type.toLowerCase() === 'location' &&
+        restriction.reasonCode === 'NotAvailableForSubscription' &&
+        restriction.values.some((value) => value.toLowerCase() === region.toLowerCase()),
+    );
   }
 
   private isMaterialUpgrade(

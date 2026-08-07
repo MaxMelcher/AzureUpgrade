@@ -83,6 +83,7 @@ function vm(): VmSku {
     zones: [],
     restrictions: [],
     retirement: null,
+    workloadClass: null,
     prices: {
       linuxPaygHourly: null,
       windowsPaygHourly: null,

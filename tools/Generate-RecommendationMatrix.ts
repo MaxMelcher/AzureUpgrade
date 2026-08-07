@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { QualityMatrixRow, RegionalCatalog } from '../src/app/models/vm.models';
 import { RecommendationEngine } from '../src/app/services/recommendation-engine';
 import { applyRetirementMetadata } from '../src/app/services/retirement-metadata';
+import { applyWorkloadMetadata } from '../src/app/services/workload-metadata';
 
 const root = resolve(__dirname, '..', '..');
 const region = process.argv[2] ?? 'uksouth';
@@ -15,7 +16,13 @@ const rawCatalog = JSON.parse(readFileSync(inputPath, 'utf8')) as RegionalCatalo
 const retirements = JSON.parse(
   readFileSync(resolve(root, 'src/assets/data/retirements.json'), 'utf8'),
 );
-const catalog = applyRetirementMetadata(rawCatalog, retirements);
+const workloads = JSON.parse(
+  readFileSync(resolve(root, 'src/assets/data/workload-families.json'), 'utf8'),
+);
+const catalog = applyWorkloadMetadata(
+  applyRetirementMetadata(rawCatalog, retirements),
+  workloads,
+);
 const rows: QualityMatrixRow[] = new RecommendationEngine(catalog).createQualityMatrix(['linux']);
 console.log(`${region}: ${rows.length.toLocaleString()} Linux combinations`);
 
@@ -62,7 +69,7 @@ const csvRows = [
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(
   outputPath,
-  `\uFEFFsep=,\r\n${csvRows.map((row) => row.map(escapeCsv).join(',')).join('\r\n')}`,
+  `\uFEFFsep=,\n${csvRows.map((row) => row.map(escapeCsv).join(',')).join('\n')}`,
   'utf8',
 );
 console.log(`Wrote ${rows.length.toLocaleString()} combinations to ${outputPath}`);
