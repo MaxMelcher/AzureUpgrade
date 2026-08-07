@@ -327,7 +327,6 @@ $regionOutputRoot = Join-Path $OutputPath 'regions'
 foreach ($currency in $currencyCodes) {
     [IO.Directory]::CreateDirectory((Join-Path $regionOutputRoot $currency.ToLowerInvariant())) | Out-Null
 }
-$regionIndex = [Collections.Generic.List[object]]::new()
 $generatedAt = [datetime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 for ($index = 0; $index -lt $selectedRegions.Count; $index++) {
@@ -380,26 +379,34 @@ for ($index = 0; $index -lt $selectedRegions.Count; $index++) {
         Write-Host "  $currency`: $script:RegionAmbiguities pricing ambiguities"
     }
 
-    $regionIndex.Add([ordered] @{
-        name = $region
-        displayName = $displayName
-        skuCount = $rawSkus.Count
-        generatedAt = $generatedAt
-    })
 }
 
-$regionIndex = @($regionIndex | Sort-Object displayName)
-Write-DeterministicJson -Value $regionIndex -Path (Join-Path $OutputPath 'regions.json')
-
-foreach ($currency in $currencyCodes) {
-    $currencyOutputPath = Join-Path $regionOutputRoot $currency.ToLowerInvariant()
-    $selectedFileNames = @($selectedRegions | ForEach-Object { "$_.json" })
-    Get-ChildItem -LiteralPath $currencyOutputPath -Filter '*.json' -File | Where-Object {
-        $_.Name -notin $selectedFileNames
-    } | ForEach-Object {
+if ($AllRegions) {
+    foreach ($currency in $currencyCodes) {
+        $currencyOutputPath = Join-Path $regionOutputRoot $currency.ToLowerInvariant()
+        $selectedFileNames = @($selectedRegions | ForEach-Object { "$_.json" })
+        Get-ChildItem -LiteralPath $currencyOutputPath -Filter '*.json' -File | Where-Object {
+            $_.Name -notin $selectedFileNames
+        } | ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Force
+        }
+    }
+    Get-ChildItem -LiteralPath $regionOutputRoot -Filter '*.json' -File | ForEach-Object {
         Remove-Item -LiteralPath $_.FullName -Force
     }
 }
+
+$indexCurrencyPath = Join-Path $regionOutputRoot $currencyCodes[0].ToLowerInvariant()
+$regionIndex = @(Get-ChildItem -LiteralPath $indexCurrencyPath -Filter '*.json' -File | ForEach-Object {
+    $existingCatalog = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+    [ordered] @{
+        name = [string] $existingCatalog.region
+        displayName = [string] $existingCatalog.displayName
+        skuCount = @($existingCatalog.skus).Count
+        generatedAt = [string] $existingCatalog.generatedAt
+    }
+} | Sort-Object displayName)
+Write-DeterministicJson -Value $regionIndex -Path (Join-Path $OutputPath 'regions.json')
 
 Write-Progress -Activity 'Generating Azure VM catalog' -Completed
 Write-Host "Catalog generated in $([IO.Path]::GetFullPath($OutputPath))."

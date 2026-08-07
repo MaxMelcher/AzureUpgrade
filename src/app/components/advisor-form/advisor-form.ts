@@ -30,10 +30,9 @@ export class AdvisorFormComponent {
   protected cpuPolicy: CpuPolicy = 'prefer-same-vendor';
   protected requireUpgradeForEol = false;
   protected skuInput = [
-    'Standard_DS3_v2',
-    'Standard_E32ds_v4',
-    'Standard_D4as_v4',
-    'Standard_E16-4as_v4',
+    'Standard_D2as_v5',
+    'Standard_B2ats_v2',
+    'Standard_A1_v2',
   ].join('\n');
   protected readonly validationError = signal('');
 

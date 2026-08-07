@@ -449,6 +449,27 @@ describe('RecommendationEngine', () => {
     expect(result.rejected.burstableClass).toBe(1);
   });
 
+  it('recognizes Arm Bps v2 as a burstable family', () => {
+    const source = vm({ prices: prices(0.3) });
+    const burstableArm = vm({
+      name: 'Standard_B2pls_v2',
+      family: 'standardBpsv2Family',
+      architecture: 'x64',
+      prices: prices(0.05),
+    });
+    const regular = vm({
+      name: 'Standard_D2als_v6',
+      prices: prices(0.2),
+    });
+    const result = engine(source, burstableArm, regular).findRecommendations(
+      source.name,
+      'westeurope',
+      'linux',
+    );
+    expect(result.recommendation?.vm.name).toBe('Standard_D2als_v6');
+    expect(result.rejected.burstableClass).toBe(1);
+  });
+
   it('preserves confidential-compute workload affinity', () => {
     const source = vm({
       name: 'Standard_DC2ads_v6',

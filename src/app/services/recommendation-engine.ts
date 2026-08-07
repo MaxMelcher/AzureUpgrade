@@ -14,6 +14,7 @@ const CPU_POLICIES: CpuPolicy[] = ['same-vendor', 'prefer-same-vendor', 'any-com
 const BURSTABLE_FAMILIES = new Set([
   'standardbsfamily',
   'standardbasv2family',
+  'standardbpsv2family',
   'standardbsv2family',
 ]);
 
