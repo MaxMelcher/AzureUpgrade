@@ -73,7 +73,7 @@ Open `http://localhost:4200`.
 The production output is `dist/azure-vm-upgrade-advisor/browser`. Deploy that folder to Azure Static Web Apps or any static file host. `public/staticwebapp.config.json` supplies the static MIME types and fallback behavior.
 
 Pushes to `main` automatically test, build, and deploy through
-`.github/workflows/azure-static-web-apps-ambitious-stone-06a515c10.yml`. Create the GitHub Actions secret
+`.github/workflows/deploy-static-web-app.yml`. Create the GitHub Actions secret
 `AZURE_STATIC_WEB_APPS_API_TOKEN` with the Static Web App deployment token before enabling the
 workflow.
 

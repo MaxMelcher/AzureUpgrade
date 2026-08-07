@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build_and_deploy_job:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
