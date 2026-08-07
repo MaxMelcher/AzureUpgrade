@@ -427,3 +427,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Angular and recommendation quality-check build output
+dist/
+.angular/
+.qa-build/
+
+# Legacy exhaustive matrix; use the scoped UK South/Linux matrix instead.
+quality-check/recommendations.csv

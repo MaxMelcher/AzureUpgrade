@@ -1,0 +1,331 @@
+import {
+  CandidateRecommendation,
+  Confidence,
+  CpuPolicy,
+  OperatingSystem,
+  QualityMatrixRow,
+  RecommendationResult,
+  RejectedCandidateStatistics,
+  RegionalCatalog,
+  VmSku
+} from '../models/vm.models';
+
+const CPU_POLICIES: CpuPolicy[] = ['same-vendor', 'prefer-same-vendor', 'any-compatible'];
+
+export class RecommendationEngine {
+  private readonly skuLookup: Map<string, VmSku>;
+
+  public constructor(private readonly catalog: RegionalCatalog) {
+    this.skuLookup = new Map(catalog.skus.map((sku) => [sku.name.toLowerCase(), sku]));
+  }
+
+  public findRecommendations(
+    sourceSku: string,
+    region: string,
+    os: OperatingSystem,
+    cpuPolicy: CpuPolicy = 'prefer-same-vendor'
+  ): RecommendationResult {
+    const source = this.skuLookup.get(sourceSku.trim().toLowerCase()) ?? null;
+    const rejected = this.emptyStatistics();
+    rejected.totalCandidates = this.catalog.skus.length;
+
+    if (!source) {
+      return this.emptyResult(
+        sourceSku,
+        region,
+        os,
+        'sku-not-found',
+        `Not found in ${this.catalog.displayName}.`,
+        rejected
+      );
+    }
+
+    const sourcePrice = this.priceFor(source, os);
+    const sourceMissing = this.missingCriticalCapabilities(source);
+    if (sourceMissing.length > 0) {
+      return {
+        ...this.emptyResult(
+          sourceSku,
+          region,
+          os,
+          'incomplete-capabilities',
+          `Azure metadata is incomplete (${sourceMissing.join(', ')}), so a safe recommendation cannot be made.`,
+          rejected
+        ),
+        source,
+        confidence: 'Low'
+      };
+    }
+
+    const candidates: CandidateRecommendation[] = [];
+    for (const candidate of this.catalog.skus) {
+      const rejection = this.rejectionReason(source, candidate, os, cpuPolicy);
+      if (rejection) {
+        rejected[rejection]++;
+        continue;
+      }
+
+      const hourlyPrice = this.priceFor(candidate, os)!;
+      const monthlySaving = sourcePrice === null ? null : (sourcePrice - hourlyPrice) * 730;
+      candidates.push({
+        vm: candidate,
+        score: this.score(source, candidate, sourcePrice, hourlyPrice, cpuPolicy),
+        hourlyPrice,
+        monthlySaving,
+        savingPercent: sourcePrice !== null && sourcePrice > 0
+          ? ((sourcePrice - hourlyPrice) / sourcePrice) * 100
+          : null
+      });
+    }
+
+    candidates.sort((left, right) =>
+      right.score - left.score
+      || left.hourlyPrice - right.hourlyPrice
+      || left.vm.name.localeCompare(right.vm.name)
+    );
+
+    const recommendation = candidates[0] ?? null;
+    if (!recommendation) {
+      return {
+        ...this.emptyResult(
+          sourceSku,
+          region,
+          os,
+          'no-compatible-replacement',
+          'No compatible replacement with a usable regional price was found.',
+          rejected
+        ),
+        source,
+        confidence: this.confidenceFor(source, null)
+      };
+    }
+
+    return {
+      inputSku: sourceSku,
+      status: sourcePrice === null ? 'source-price-missing' : 'recommended',
+      region,
+      os,
+      source,
+      recommendation,
+      alternatives: candidates.slice(1, 4),
+      rejected,
+      explanation: this.explain(source, recommendation.vm, sourcePrice, recommendation.hourlyPrice),
+      confidence: this.confidenceFor(source, recommendation.vm)
+    };
+  }
+
+  public createQualityMatrix(
+    operatingSystems: readonly OperatingSystem[] = ['linux']
+  ): QualityMatrixRow[] {
+    const rows: QualityMatrixRow[] = [];
+    for (const sku of this.catalog.skus) {
+      for (const os of operatingSystems) {
+        for (const cpuPolicy of CPU_POLICIES) {
+          const result = this.findRecommendations(sku.name, this.catalog.region, os, cpuPolicy);
+          rows.push({
+            region: this.catalog.region,
+            sourceSku: sku.name,
+            os,
+            cpuPolicy,
+            status: result.status,
+            recommendation: result.recommendation?.vm.name ?? '',
+            sourceHourly: this.priceFor(sku, os),
+            recommendedHourly: result.recommendation?.hourlyPrice ?? null,
+            monthlySaving: result.recommendation?.monthlySaving ?? null,
+            savingPercent: result.recommendation?.savingPercent ?? null,
+            confidence: result.confidence,
+            explanation: result.explanation
+          });
+        }
+      }
+    }
+
+    return rows;
+  }
+
+  private rejectionReason(
+    source: VmSku,
+    candidate: VmSku,
+    os: OperatingSystem,
+    cpuPolicy: CpuPolicy
+  ): keyof Omit<RejectedCandidateStatistics, 'totalCandidates'> | null {
+    if (candidate.name === source.name) return 'sourceSku';
+    if (this.priceFor(candidate, os) === null) return 'price';
+    if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
+    if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
+    if (!this.atLeast(candidate.maxDataDisks, source.maxDataDisks)) return 'dataDisks';
+    if ((source.tempDiskMB ?? 0) > 0 && !this.atLeast(candidate.tempDiskMB, source.tempDiskMB)) return 'tempDisk';
+    if (source.premiumIO === true && candidate.premiumIO !== true) return 'premiumIO';
+    if (source.acceleratedNetworking === true && candidate.acceleratedNetworking !== true) return 'acceleratedNetworking';
+    if (source.rdma === true && candidate.rdma !== true) return 'rdma';
+    if (source.architecture && candidate.architecture !== source.architecture) return 'architecture';
+    if (
+      cpuPolicy === 'same-vendor'
+      && source.cpuVendor
+      && candidate.cpuVendor !== source.cpuVendor
+    ) return 'cpuVendor';
+    if (
+      source.cpuGeneration !== null
+      && candidate.cpuGeneration !== null
+      && candidate.cpuGeneration < source.cpuGeneration
+    ) return 'olderGeneration';
+    return null;
+  }
+
+  private score(
+    source: VmSku,
+    candidate: VmSku,
+    sourcePrice: number | null,
+    candidatePrice: number,
+    cpuPolicy: CpuPolicy
+  ): number {
+    let score = 1000;
+    const usableCpuDelta = candidate.vcpusAvailable! - source.vcpusAvailable!;
+    const memoryDelta = candidate.memoryGB! - source.memoryGB!;
+    const physicalCpuDelta = Math.abs((candidate.vcpus ?? candidate.vcpusAvailable!)
+      - (source.vcpus ?? source.vcpusAvailable!));
+
+    score += usableCpuDelta === 0 ? 500 : -usableCpuDelta * 90;
+    score += memoryDelta === 0 ? 450 : -memoryDelta * 18;
+    score -= physicalCpuDelta * 12;
+
+    if (source.cpuVendor && candidate.cpuVendor === source.cpuVendor) {
+      score += cpuPolicy === 'prefer-same-vendor' ? 260 : 140;
+    } else if (cpuPolicy === 'prefer-same-vendor' && source.cpuVendor) {
+      score -= 180;
+    }
+
+    if (source.cpuGeneration !== null && candidate.cpuGeneration !== null) {
+      const generationDelta = candidate.cpuGeneration - source.cpuGeneration;
+      score += generationDelta > 0 ? 320 + Math.min(generationDelta, 3) * 25 : 40;
+    } else {
+      score -= 60;
+    }
+
+    if ((source.tempDiskMB ?? 0) > 0) {
+      score += candidate.tempDiskMB === source.tempDiskMB ? 90 : 40;
+    }
+
+    const priceDeltaPercent = sourcePrice !== null && sourcePrice > 0
+      ? ((sourcePrice - candidatePrice) / sourcePrice) * 100
+      : 0;
+    score += Math.max(-180, Math.min(180, priceDeltaPercent * 3));
+    return Math.round(score * 100) / 100;
+  }
+
+  private explain(
+    source: VmSku,
+    candidate: VmSku,
+    sourcePrice: number | null,
+    candidatePrice: number
+  ): string {
+    const reasons: string[] = [];
+    if (candidate.vcpusAvailable === source.vcpusAvailable && candidate.memoryGB === source.memoryGB) {
+      reasons.push('same usable CPU and memory');
+    } else {
+      reasons.push('required usable CPU and memory preserved');
+    }
+    if (source.cpuVendor && candidate.cpuVendor === source.cpuVendor) {
+      reasons.push(`${source.cpuVendor}/${source.architecture ?? 'compatible architecture'} preserved`);
+    } else {
+      reasons.push(`${source.architecture ?? 'architecture'} compatibility preserved`);
+    }
+    if ((source.tempDiskMB ?? 0) > 0) reasons.push('temporary storage requirement preserved');
+    if (source.premiumIO) reasons.push('Premium SSD supported');
+    if (
+      source.cpuGeneration !== null
+      && candidate.cpuGeneration !== null
+      && candidate.cpuGeneration > source.cpuGeneration
+    ) reasons.push('newer CPU generation');
+
+    if (sourcePrice === null) {
+      reasons.push('candidate has a usable regional PAYG price, but the source PAYG price is unavailable');
+    } else {
+      const savingPercent = ((sourcePrice - candidatePrice) / sourcePrice) * 100;
+      reasons.push(savingPercent >= 0
+        ? `${savingPercent.toFixed(1)}% lower PAYG price`
+        : `${Math.abs(savingPercent).toFixed(1)}% higher PAYG price`);
+    }
+    return `${this.sentenceList(reasons)}.`;
+  }
+
+  private confidenceFor(source: VmSku, candidate: VmSku | null): Confidence {
+    if (this.missingCriticalCapabilities(source).length > 0) return 'Low';
+    if (
+      !source.cpuVendor
+      || source.cpuGeneration === null
+      || !candidate
+      || !candidate.cpuVendor
+      || candidate.cpuGeneration === null
+    ) return 'Medium';
+    if (
+      candidate.vcpusAvailable === source.vcpusAvailable
+      && candidate.memoryGB === source.memoryGB
+    ) return 'High';
+    return 'Medium';
+  }
+
+  private missingCriticalCapabilities(vm: VmSku): string[] {
+    const missing: string[] = [];
+    if (vm.vcpusAvailable === null) missing.push('usable vCPU');
+    if (vm.memoryGB === null) missing.push('memory');
+    if (vm.maxDataDisks === null) missing.push('data disk limit');
+    if (vm.tempDiskMB === null) missing.push('temporary disk');
+    if (vm.architecture === null) missing.push('architecture');
+    return missing;
+  }
+
+  private priceFor(vm: VmSku, os: OperatingSystem): number | null {
+    const price = os === 'linux' ? vm.prices.linuxPaygHourly : vm.prices.windowsPaygHourly;
+    return price !== null && price > 0 ? price : null;
+  }
+
+  private atLeast(candidate: number | null, source: number | null): boolean {
+    return source === null || (candidate !== null && candidate >= source);
+  }
+
+  private emptyStatistics(): RejectedCandidateStatistics {
+    return {
+      totalCandidates: 0,
+      sourceSku: 0,
+      price: 0,
+      usableVcpus: 0,
+      memory: 0,
+      dataDisks: 0,
+      tempDisk: 0,
+      premiumIO: 0,
+      acceleratedNetworking: 0,
+      rdma: 0,
+      architecture: 0,
+      cpuVendor: 0,
+      olderGeneration: 0
+    };
+  }
+
+  private emptyResult(
+    inputSku: string,
+    region: string,
+    os: OperatingSystem,
+    status: RecommendationResult['status'],
+    explanation: string,
+    rejected: RejectedCandidateStatistics
+  ): RecommendationResult {
+    return {
+      inputSku,
+      status,
+      region,
+      os,
+      source: null,
+      recommendation: null,
+      alternatives: [],
+      rejected,
+      explanation,
+      confidence: 'Low'
+    };
+  }
+
+  private sentenceList(values: string[]): string {
+    if (values.length < 2) return values[0] ?? '';
+    return `${values.slice(0, -1).join(', ')} and ${values.at(-1)}`;
+  }
+}

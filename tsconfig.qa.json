@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": ".qa-build",
+    "rootDir": ".",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "tools/Generate-RecommendationMatrix.ts",
+    "src/app/models/vm.models.ts",
+    "src/app/services/recommendation-engine.ts"
+  ]
+}

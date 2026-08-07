@@ -1,0 +1,57 @@
+name: Refresh Azure VM catalog
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Generate regional catalogs
+        shell: pwsh
+        run: |
+          ./tools/Generate-VmCatalog.ps1 `
+            -Regions uksouth `
+            -CurrencyCode GBP
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test and build
+        run: |
+          npm test
+          npm run build
+          npm run qa:recommendations
+
+      - name: Commit refreshed data
+        shell: bash
+        run: |
+          if git diff --quiet -- src/assets/data quality-check/recommendations-uksouth-linux.csv; then
+            echo "Catalog is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/assets/data quality-check/recommendations-uksouth-linux.csv
+          git commit -m "Refresh Azure VM catalog"
+          git push

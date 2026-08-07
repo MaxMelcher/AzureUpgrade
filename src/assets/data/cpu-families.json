@@ -1,0 +1,62 @@
+{
+  "standardDASv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "description": "AMD EPYC 7452 based Dasv4 family"
+  },
+  "standardDADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "description": "AMD EPYC 7763 based Dadsv5 family"
+  },
+  "standardDADSv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "description": "AMD EPYC 9004 based Dadsv6 family"
+  },
+  "standardEASv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "description": "AMD EPYC 7452 based Easv4 family"
+  },
+  "standardEADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "description": "AMD EPYC 7763 based Eadsv5 family"
+  },
+  "standardEADSv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "description": "AMD EPYC 9004 based Eadsv6 family"
+  },
+  "standardDSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "description": "Older Intel Xeon based Dsv2 family"
+  },
+  "standardDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "description": "Intel Xeon Platinum 8370C based Dsv5 family"
+  },
+  "standardEDSv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "description": "Intel Xeon Platinum 8272CL based Edsv4 family"
+  },
+  "standardEDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "description": "Intel Xeon Platinum 8370C based Edsv5 family"
+  }
+}
