@@ -374,6 +374,10 @@ strong {
   border-color: rgba(190, 41, 41, 0.4);
   color: #b02a2a;
 }
+.badge.neutral {
+  background: var(--surface);
+  color: var(--muted);
+}
 .candidate-notes {
   color: var(--muted);
   font-size: 13px;

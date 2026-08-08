@@ -12,8 +12,8 @@ import {
 } from '../models/vm.models';
 import { isRetired, migrationGuideUrl } from './retirement-metadata';
 
-/** Price difference that separates a real saving from an equivalent modernization. */
-const MATERIAL_PRICE_DIFFERENCE = 0.05;
+/** Price difference, in percent, that separates a real saving from an equivalent modernization. */
+const MATERIAL_SAVING_PERCENT = 5;
 
 type CandidateCategory =
   'compatible' | 'conditional' | 'alternative-architecture' | 'manual-review';
@@ -201,7 +201,7 @@ export class RecommendationEngine {
     const materiallyCheaper = (candidate: EvaluatedCandidate | null): boolean =>
       candidate !== null &&
       candidate.savingPercent !== null &&
-      candidate.savingPercent >= MATERIAL_PRICE_DIFFERENCE * 100;
+      candidate.savingPercent >= MATERIAL_SAVING_PERCENT;
 
     if (mandatoryUpgrade) {
       const replacement = cheapest ?? conditional[0] ?? null;
@@ -220,7 +220,7 @@ export class RecommendationEngine {
       (candidate) =>
         this.isNewerGeneration(source, candidate.vm) &&
         candidate.savingPercent !== null &&
-        Math.abs(candidate.savingPercent) <= MATERIAL_PRICE_DIFFERENCE * 100,
+        Math.abs(candidate.savingPercent) <= MATERIAL_SAVING_PERCENT,
     );
     if (modernization) {
       return { candidate: modernization, state: 'equivalent-modernization' };
@@ -241,7 +241,10 @@ export class RecommendationEngine {
     os: OperatingSystem,
   ): RejectionReason | null {
     if (candidate.name === source.name) return 'sourceSku';
-    if (candidate.lifecycleStatus === 'retired' || candidate.retirement !== null)
+    if (
+      candidate.lifecycleStatus === 'retired' ||
+      candidate.lifecycleStatus === 'retirementAnnounced'
+    )
       return 'retirement';
     if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
     if (this.priceFor(candidate, os) === null) return 'price';
@@ -399,7 +402,12 @@ export class RecommendationEngine {
       !source.hyperVGenerations.includes('V1') || candidate.hyperVGenerations.includes('V1');
     if (!hyperVKept) manual.push('Generation 1 images are not supported by the target');
 
-    if (os === 'linux' && !localStorageKept && !candidate.profile.localTempDisk) {
+    if (
+      os === 'linux' &&
+      !localStorageKept &&
+      !candidate.profile.localTempDisk &&
+      manual.length === 0
+    ) {
       notes.push('Linux supports resizing to a size without local temporary storage');
     }
 
@@ -435,11 +443,15 @@ export class RecommendationEngine {
     };
   }
 
+  /** Cheapest first, then closest to the source shape, then the newest series. */
   private byPrice(source: VmSku): (left: EvaluatedCandidate, right: EvaluatedCandidate) => number {
+    const distance = (value: number | null, reference: number | null): number =>
+      Math.abs((value ?? 0) - (reference ?? 0));
     return (left, right) =>
       left.hourlyPrice - right.hourlyPrice ||
-      (left.vm.vcpusAvailable ?? 0) - (right.vm.vcpusAvailable ?? 0) ||
-      (left.vm.memoryGB ?? 0) - (right.vm.memoryGB ?? 0) ||
+      distance(left.vm.vcpusAvailable, source.vcpusAvailable) -
+        distance(right.vm.vcpusAvailable, source.vcpusAvailable) ||
+      distance(left.vm.memoryGB, source.memoryGB) - distance(right.vm.memoryGB, source.memoryGB) ||
       (right.vm.seriesVersion ?? 0) - (left.vm.seriesVersion ?? 0) ||
       Number(this.isNewerGeneration(source, right.vm)) -
         Number(this.isNewerGeneration(source, left.vm)) ||

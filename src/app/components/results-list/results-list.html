@@ -246,10 +246,15 @@
                           class="badge price"
                           [class.passed]="candidate.savingPercent > 0"
                           [class.failed]="candidate.savingPercent < 0"
+                          [class.neutral]="candidate.savingPercent === 0"
                         >
-                          {{ candidate.savingPercent > 0 ? '↓' : '↑' }}
-                          {{ absolute(candidate.savingPercent) | number: '1.0-0' }}%
-                          {{ candidate.savingPercent > 0 ? 'cheaper' : 'more expensive' }}
+                          @if (candidate.savingPercent === 0) {
+                            = same price
+                          } @else {
+                            {{ candidate.savingPercent > 0 ? '↓' : '↑' }}
+                            {{ absolute(candidate.savingPercent) | number: '1.0-0' }}%
+                            {{ candidate.savingPercent > 0 ? 'cheaper' : 'more expensive' }}
+                          }
                         </span>
                       }
                     </div>
