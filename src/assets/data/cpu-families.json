@@ -1,86 +1,1142 @@
 {
-  "standardDASv4Family": {
+  "Standard NCASv3_T4 Family": {
     "vendor": "AMD",
     "architecture": "x64",
     "generation": 2,
-    "description": "AMD EPYC 7452 based Dasv4 family"
+    "model": "AMD EPYC 7452/7V12 (Rome)"
   },
-  "standardDADSv5Family": {
+  "standard NDAMSv4_A100Family": {
     "vendor": "AMD",
     "architecture": "x64",
     "generation": 3,
-    "description": "AMD EPYC 7763 based Dadsv5 family"
+    "model": "AMD EPYC 7763/7V13 (Milan)"
   },
-  "standardDADSv6Family": {
-    "vendor": "AMD",
-    "architecture": "x64",
-    "generation": 4,
-    "description": "AMD EPYC 9004 based Dadsv6 family"
-  },
-  "standardEASv4Family": {
-    "vendor": "AMD",
-    "architecture": "x64",
-    "generation": 2,
-    "description": "AMD EPYC 7452 based Easv4 family"
-  },
-  "standardEADSv5Family": {
+  "Standard NDASv4_A100 Family": {
     "vendor": "AMD",
     "architecture": "x64",
     "generation": 3,
-    "description": "AMD EPYC 7763 based Eadsv5 family"
+    "model": "AMD EPYC 7763/7V13 (Milan)"
   },
-  "standardEADSv6Family": {
-    "vendor": "AMD",
-    "architecture": "x64",
-    "generation": 4,
-    "description": "AMD EPYC 9004 based Eadsv6 family"
-  },
-  "standardDSv2Family": {
+  "standardAv2Family": {
     "vendor": "Intel",
     "architecture": "x64",
     "generation": 1,
-    "description": "Older Intel Xeon based Dsv2 family"
-  },
-  "standardDSv5Family": {
-    "vendor": "Intel",
-    "architecture": "x64",
-    "generation": 4,
-    "description": "Intel Xeon Platinum 8370C based Dsv5 family"
-  },
-  "standardDDSv5Family": {
-    "vendor": "Intel",
-    "architecture": "x64",
-    "generation": 4,
-    "description": "Intel Xeon Platinum 8370C based Ddsv5 family"
-  },
-  "standardBSFamily": {
-    "vendor": "Intel",
-    "architecture": "x64",
-    "generation": 2,
-    "description": "Intel Xeon based B-series v1 family"
+    "model": "Intel Xeon (Haswell/Broadwell)"
   },
   "standardBasv2Family": {
     "vendor": "AMD",
     "architecture": "x64",
     "generation": 3,
-    "description": "AMD EPYC based Basv2 family"
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardBpsv2Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "standardBSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
   },
   "standardBsv2Family": {
     "vendor": "Intel",
     "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardDADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardDadsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
     "generation": 5,
-    "description": "Intel Xeon based Bsv2 family"
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardDadv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardDaldsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardDaldv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardDalsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardDalv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardDASv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardDASv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardDasv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardDAv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardDav6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardDCACCV5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardDCADCCV5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardDCADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardDCadsv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardDCASv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardDCasv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardDCEDV5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardDCEDV6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardDCEV5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardDCEV6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardDCSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "standardDCSv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardDDCSv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardDDSv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardDDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardDdsv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDdsv7Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardDDv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardDDv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardDFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardDLDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardDldsv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDldsv7Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardDLSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardDlsv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDlsv7Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "StandardDndv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDnldv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDnlv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDnv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardDPDSv5Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "StandardDpdsv6Family": {
+    "vendor": "Microsoft",
+    "architecture": "arm64",
+    "generation": 2,
+    "model": "Azure Cobalt 100"
+  },
+  "standardDPLDSv5Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "StandardDpldsv6Family": {
+    "vendor": "Microsoft",
+    "architecture": "arm64",
+    "generation": 2,
+    "model": "Azure Cobalt 100"
+  },
+  "standardDPLSv5Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "StandardDplsv6Family": {
+    "vendor": "Microsoft",
+    "architecture": "arm64",
+    "generation": 2,
+    "model": "Azure Cobalt 100"
+  },
+  "standardDPSv5Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "StandardDpsv6Family": {
+    "vendor": "Microsoft",
+    "architecture": "arm64",
+    "generation": 2,
+    "model": "Azure Cobalt 100"
+  },
+  "standardDSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardDSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardDSv2PromoFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardDSv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "standardDSv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardDsv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardDsv7Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardDv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardDv2PromoFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardDv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "standardDv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardDv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardEadsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardEadv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardEASv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardEASv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardEasv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardEAv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardEav6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardEBDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEBSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardECACCV5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardECADCCV5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardECADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardECadsv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardECASv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardECasv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardECEDV5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardECEDV6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardECEV5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardECEV6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardECIADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardECIASv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardECIEDV5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardECIEV5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
   },
   "standardEDSv4Family": {
     "vendor": "Intel",
     "architecture": "x64",
     "generation": 3,
-    "description": "Intel Xeon Platinum 8272CL based Edsv4 family"
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
   },
   "standardEDSv5Family": {
     "vendor": "Intel",
     "architecture": "x64",
     "generation": 4,
-    "description": "Intel Xeon Platinum 8370C based Edsv5 family"
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardEdsv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardEdsv7Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardEDv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardEDv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEIADSv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardEIASv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardEIASv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardEIBDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEIBSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEIDSv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEIDv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEISv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardEIv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardEndv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardEnv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardEPDSv5Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "StandardEpdsv6Family": {
+    "vendor": "Microsoft",
+    "architecture": "arm64",
+    "generation": 2,
+    "model": "Azure Cobalt 100"
+  },
+  "standardEPSv5Family": {
+    "vendor": "Ampere",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "Ampere Altra"
+  },
+  "StandardEpsv6Family": {
+    "vendor": "Microsoft",
+    "architecture": "arm64",
+    "generation": 2,
+    "model": "Azure Cobalt 100"
+  },
+  "standardESv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "standardESv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardESv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardEsv6Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardEsv7Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 6,
+    "model": "Intel Xeon 6"
+  },
+  "standardEv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "standardEv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardEv5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardFadsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "StandardFaldsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "StandardFalsv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardFalsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "StandardFamdsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "StandardFamsv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardFamsv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "StandardFasv6Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardFasv7Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardFFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardFSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardFSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "StandardFXmdsv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardFXMDVSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "StandardFXmsv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardGFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardGSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardHBrsv2Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardHBv3Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardHBv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardHBv5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardHCSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "standardHXFamily": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardLaosv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardLASv3Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardLasv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardLSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardLSv2Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "AMD EPYC 7551 (Naples)"
+  },
+  "standardLSv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardLsv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "StandardMBDSMediumMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "StandardMBSMediumMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMDSHighMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMDSMediumMemoryv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardMDSMediumMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMIDSHighMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMIDSMediumMemoryv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardMISHighMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMISMediumMemoryv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardMSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardMSHighMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMSMediumMemoryv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardMSMediumMemoryv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "Intel Xeon Platinum 8370C (Ice Lake)"
+  },
+  "standardMSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "StandardNCADSA100v4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardNCADSA10v4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardNCadsH100v5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardNCCads2023Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "StandardNCdsRTXPRO6000BSEv6XLFamily": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "AMD EPYC 9005 (Turin)"
+  },
+  "standardNCSv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardNDISRGB200V6NDRFamily": {
+    "vendor": "NVIDIA",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "NVIDIA Grace"
+  },
+  "standardNDISRGB300V6Family": {
+    "vendor": "NVIDIA",
+    "architecture": "arm64",
+    "generation": 1,
+    "model": "NVIDIA Grace"
+  },
+  "standardNDISRH200V5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardNDISv5MI300XFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardNDSH100v5Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 5,
+    "model": "Intel Xeon Platinum 8480C (Sapphire Rapids)"
+  },
+  "standardNDSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "StandardNGADSV620v1Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "standardNPSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "Intel Xeon (Skylake/Coffee Lake)"
+  },
+  "StandardNVADSA10v5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "AMD EPYC 7763/7V13 (Milan)"
+  },
+  "StandardNVadsV710v5Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 4,
+    "model": "AMD EPYC 9V64 (Genoa)"
+  },
+  "standardNVSv2Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardNVSv3Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardNVSv4Family": {
+    "vendor": "AMD",
+    "architecture": "x64",
+    "generation": 2,
+    "model": "AMD EPYC 7452/7V12 (Rome)"
+  },
+  "standardPBSFamily": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 1,
+    "model": "Intel Xeon (Haswell/Broadwell)"
+  },
+  "standardXEIDSv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
+  },
+  "standardXEISv4Family": {
+    "vendor": "Intel",
+    "architecture": "x64",
+    "generation": 3,
+    "model": "Intel Xeon Platinum 8272CL (Cascade Lake)"
   }
 }

@@ -45,13 +45,13 @@
         </select>
       </label>
 
-      <label>
-        <span>CPU policy</span>
-        <select name="cpuPolicy" [(ngModel)]="cpuPolicy">
-          <option value="same-vendor">Same vendor only</option>
-          <option value="prefer-same-vendor">Prefer same vendor</option>
-          <option value="any-compatible">Any compatible CPU</option>
-        </select>
+      <label class="policy-note">
+        <span>CPU compatibility</span>
+        <p class="control-static">Same vendor and architecture</p>
+        <small class="control-note">
+          Intel stays Intel, AMD stays AMD and Arm64 stays Arm64. A processor change is only ever
+          offered as a separate alternative-architecture option.
+        </small>
       </label>
     </div>
 

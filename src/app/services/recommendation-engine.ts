@@ -1,23 +1,46 @@
 import {
   CandidateRecommendation,
+  CompatibilityCheck,
   Confidence,
-  CpuPolicy,
   OperatingSystem,
   QualityMatrixRow,
   RecommendationResult,
+  RecommendationState,
   RejectedCandidateStatistics,
   RegionalCatalog,
   VmSku,
 } from '../models/vm.models';
+import { isRetired, migrationGuideUrl } from './retirement-metadata';
 
-const CPU_POLICIES: CpuPolicy[] = ['same-vendor', 'prefer-same-vendor', 'any-compatible'];
-const BURSTABLE_FAMILIES = new Set([
-  'standardbsfamily',
-  'standardbasv2family',
-  'standardbpsv2family',
-  'standardbsv2family',
-]);
+/** Price difference that separates a real saving from an equivalent modernization. */
+const MATERIAL_PRICE_DIFFERENCE = 0.05;
 
+type CandidateCategory =
+  'compatible' | 'conditional' | 'alternative-architecture' | 'manual-review';
+
+type RejectionReason = keyof Omit<RejectedCandidateStatistics, 'totalCandidates'>;
+
+interface Evaluation {
+  category: CandidateCategory;
+  checks: CompatibilityCheck[];
+  notes: string[];
+}
+
+interface EvaluatedCandidate extends Evaluation {
+  vm: VmSku;
+  hourlyPrice: number;
+  monthlySaving: number | null;
+  savingPercent: number | null;
+}
+
+/**
+ * Compatibility-first matcher.
+ *
+ * Candidates are selected in a fixed order: hardware compatibility, workload profile, regional
+ * availability, lifecycle, performance equivalence and only then price. Price never overrides a
+ * compatibility mismatch, and a candidate that fails a hard check can never become the primary
+ * recommendation.
+ */
 export class RecommendationEngine {
   private readonly skuLookup: Map<string, VmSku>;
 
@@ -29,7 +52,6 @@ export class RecommendationEngine {
     sourceSku: string,
     region: string,
     os: OperatingSystem,
-    cpuPolicy: CpuPolicy = 'prefer-same-vendor',
     requireUpgradeForEol = false,
   ): RecommendationResult {
     const source = this.skuLookup.get(sourceSku.trim().toLowerCase()) ?? null;
@@ -47,9 +69,9 @@ export class RecommendationEngine {
       );
     }
 
-    const sourcePrice = this.priceFor(source, os);
     const mandatoryUpgrade =
-      this.isRetired(source) || (requireUpgradeForEol && source.retirement !== null);
+      source.lifecycleStatus === 'retired' ||
+      (requireUpgradeForEol && source.lifecycleStatus === 'retirementAnnounced');
     const sourceMissing = this.missingCriticalCapabilities(source);
     if (sourceMissing.length > 0) {
       return {
@@ -67,89 +89,70 @@ export class RecommendationEngine {
       };
     }
 
-    const candidates: CandidateRecommendation[] = [];
+    const sourcePrice = this.priceFor(source, os);
+    const evaluated: EvaluatedCandidate[] = [];
     for (const candidate of this.catalog.skus) {
-      const rejection = this.rejectionReason(source, candidate, os, cpuPolicy);
+      const rejection = this.rejectionReason(source, candidate, os);
       if (rejection) {
         rejected[rejection]++;
         continue;
       }
 
       const hourlyPrice = this.priceFor(candidate, os)!;
-      const monthlySaving = sourcePrice === null ? null : (sourcePrice - hourlyPrice) * 730;
-      candidates.push({
+      evaluated.push({
         vm: candidate,
-        score: this.score(source, candidate, sourcePrice, hourlyPrice, cpuPolicy),
         hourlyPrice,
-        monthlySaving,
+        monthlySaving: sourcePrice === null ? null : (sourcePrice - hourlyPrice) * 730,
         savingPercent:
           sourcePrice !== null && sourcePrice > 0
             ? ((sourcePrice - hourlyPrice) / sourcePrice) * 100
             : null,
+        ...this.evaluate(source, candidate, os),
       });
     }
 
-    candidates.sort(
-      (left, right) =>
-        right.score - left.score ||
-        left.hourlyPrice - right.hourlyPrice ||
-        left.vm.name.localeCompare(right.vm.name),
-    );
+    const byCategory = (category: CandidateCategory): EvaluatedCandidate[] =>
+      evaluated.filter((candidate) => candidate.category === category).sort(this.byPrice(source));
 
-    const recommendation = candidates[0] ?? null;
-    if (!recommendation) {
-      return {
-        ...this.emptyResult(
-          sourceSku,
-          region,
-          os,
-          'no-compatible-replacement',
-          'No compatible replacement with a usable regional price was found.',
-          rejected,
-        ),
-        source,
-        confidence: this.confidenceFor(source, null),
-        mandatoryUpgrade,
-      };
-    }
+    const compatible = byCategory('compatible');
+    const conditional = byCategory('conditional');
+    const alternativeArchitecture = byCategory('alternative-architecture');
+    const manualReview = byCategory('manual-review');
 
-    if (
-      source.retirement === null &&
-      !this.isMaterialUpgrade(source, recommendation.vm, sourcePrice, recommendation.hourlyPrice)
-    ) {
-      return {
-        ...this.emptyResult(
-          sourceSku,
-          region,
-          os,
-          'no-upgrade-needed',
-          'The current VM has no announced EOL, and no candidate provides a material price or same-vendor generation improvement.',
-          rejected,
-        ),
-        source,
-        alternatives: candidates.slice(0, 3),
-        confidence: this.confidenceFor(source, recommendation.vm),
-        mandatoryUpgrade: false,
-      };
-    }
+    const selection = this.select(source, mandatoryUpgrade, compatible, conditional);
+    const primary = selection ? this.toCandidate(selection.candidate, selection.state) : null;
 
     return {
       inputSku: sourceSku,
-      status: sourcePrice === null ? 'source-price-missing' : 'recommended',
+      status: primary
+        ? primary.state
+        : mandatoryUpgrade
+          ? 'manual-migration-required'
+          : 'no-safe-cheaper-replacement',
       region,
       os,
       source,
-      recommendation,
-      alternatives: candidates.slice(1, 4),
+      recommendation: primary,
+      alternatives: compatible
+        .filter((candidate) => candidate.vm.name !== primary?.vm.name)
+        .slice(0, 3)
+        .map((candidate) => this.toCandidate(candidate, 'equivalent-modernization')),
+      conditional: conditional
+        .filter((candidate) => candidate.vm.name !== primary?.vm.name)
+        .slice(0, 3)
+        .map((candidate) => this.toCandidate(candidate, 'conditional-saving')),
+      alternativeArchitecture: alternativeArchitecture
+        .slice(0, 3)
+        .map((candidate) => this.toCandidate(candidate, 'alternative-architecture')),
+      manualReview: manualReview
+        .slice(0, 3)
+        .map((candidate) => this.toCandidate(candidate, 'manual-review')),
       rejected,
-      explanation: this.explain(
-        source,
-        recommendation.vm,
-        sourcePrice,
-        recommendation.hourlyPrice,
-        mandatoryUpgrade,
-      ),
-      confidence: this.confidenceFor(source, recommendation.vm),
+      explanation: this.explain(source, primary, mandatoryUpgrade, {
+        alternativeArchitecture: alternativeArchitecture.length,
+        manualReview: manualReview.length,
+      }),
+      confidence: this.confidenceFor(source, primary),
       mandatoryUpgrade,
     };
   }
@@ -160,53 +163,366 @@ export class RecommendationEngine {
     const rows: QualityMatrixRow[] = [];
     for (const sku of this.qualityRepresentativeSkus()) {
       for (const os of operatingSystems) {
-        for (const cpuPolicy of CPU_POLICIES) {
-          const result = this.findRecommendations(sku.name, this.catalog.region, os, cpuPolicy);
-          rows.push({
-            region: this.catalog.region,
-            family: sku.family,
-            sourceSku: sku.name,
-            os,
-            cpuPolicy,
-            status: result.status,
-            recommendation: result.recommendation?.vm.name ?? '',
-            sourceHourly: this.priceFor(sku, os),
-            recommendedHourly: result.recommendation?.hourlyPrice ?? null,
-            monthlySaving: result.recommendation?.monthlySaving ?? null,
-            savingPercent: result.recommendation?.savingPercent ?? null,
-            confidence: result.confidence,
-            explanation: result.explanation,
-            mandatoryUpgrade: result.mandatoryUpgrade,
-            sourceEolDate: result.source?.retirement?.eolDate ?? '',
-          });
-        }
+        const result = this.findRecommendations(sku.name, this.catalog.region, os);
+        rows.push({
+          region: this.catalog.region,
+          family: sku.family,
+          sourceSku: sku.name,
+          os,
+          status: result.status,
+          recommendation: result.recommendation?.vm.name ?? '',
+          recommendationState: result.recommendation?.state ?? '',
+          sourceHourly: this.priceFor(sku, os),
+          recommendedHourly: result.recommendation?.hourlyPrice ?? null,
+          monthlySaving: result.recommendation?.monthlySaving ?? null,
+          savingPercent: result.recommendation?.savingPercent ?? null,
+          confidence: result.confidence,
+          explanation: result.explanation,
+          mandatoryUpgrade: result.mandatoryUpgrade,
+          sourceLifecycleStatus: sku.lifecycleStatus,
+          sourceEolDate: result.source?.retirement?.eolDate ?? '',
+        });
       }
     }
-
-    return this.collapseIdenticalPolicyOutcomes(rows);
+    return rows;
   }
 
-  private collapseIdenticalPolicyOutcomes(rows: QualityMatrixRow[]): QualityMatrixRow[] {
-    const collapsed = new Map<string, QualityMatrixRow>();
-    for (const row of rows) {
-      const outcomeKey = JSON.stringify([
-        row.family,
-        row.status,
-        row.recommendation,
-        row.recommendedHourly,
-        row.monthlySaving,
-        row.confidence,
-        row.mandatoryUpgrade,
-        row.sourceEolDate,
-      ]);
-      const existing = collapsed.get(outcomeKey);
-      if (existing) {
-        existing.cpuPolicy = `${existing.cpuPolicy} | ${row.cpuPolicy}`;
-      } else {
-        collapsed.set(outcomeKey, { ...row });
-      }
+  /**
+   * Picks the primary recommendation. Price is only used once every hard compatibility check has
+   * already passed.
+   */
+  private select(
+    source: VmSku,
+    mandatoryUpgrade: boolean,
+    compatible: EvaluatedCandidate[],
+    conditional: EvaluatedCandidate[],
+  ): { candidate: EvaluatedCandidate; state: RecommendationState } | null {
+    const cheapest = compatible[0] ?? null;
+    const materiallyCheaper = (candidate: EvaluatedCandidate | null): boolean =>
+      candidate !== null &&
+      candidate.savingPercent !== null &&
+      candidate.savingPercent >= MATERIAL_PRICE_DIFFERENCE * 100;
+
+    if (mandatoryUpgrade) {
+      const replacement = cheapest ?? conditional[0] ?? null;
+      if (!replacement) return null;
+      return {
+        candidate: replacement,
+        state: materiallyCheaper(replacement) ? 'recommended' : 'lifecycle-replacement',
+      };
     }
-    return [...collapsed.values()];
+
+    if (materiallyCheaper(cheapest)) {
+      return { candidate: cheapest!, state: 'recommended' };
+    }
+
+    const modernization = compatible.find(
+      (candidate) =>
+        this.isNewerGeneration(source, candidate.vm) &&
+        candidate.savingPercent !== null &&
+        Math.abs(candidate.savingPercent) <= MATERIAL_PRICE_DIFFERENCE * 100,
+    );
+    if (modernization) {
+      return { candidate: modernization, state: 'equivalent-modernization' };
+    }
+
+    const conditionalSaving = conditional.find((candidate) => materiallyCheaper(candidate));
+    if (conditionalSaving) {
+      return { candidate: conditionalSaving, state: 'conditional-saving' };
+    }
+
+    return null;
+  }
+
+  /** Hard filters. A candidate rejected here is never surfaced, whatever it costs. */
+  private rejectionReason(
+    source: VmSku,
+    candidate: VmSku,
+    os: OperatingSystem,
+  ): RejectionReason | null {
+    if (candidate.name === source.name) return 'sourceSku';
+    if (candidate.lifecycleStatus === 'retired' || candidate.retirement !== null)
+      return 'retirement';
+    if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
+    if (this.priceFor(candidate, os) === null) return 'price';
+    if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
+    if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
+    if (this.isConstrained(source) !== this.isConstrained(candidate)) return 'constrainedShape';
+    if (!source.profile.burstable && candidate.profile.burstable) return 'burstableClass';
+    if (this.hasAccelerator(source) && !this.hasAccelerator(candidate)) return 'accelerator';
+    if (this.hasAccelerator(source) && !this.atLeast(candidate.gpus, source.gpus))
+      return 'accelerator';
+    if (this.isOlderGeneration(source, candidate)) return 'olderGeneration';
+    if (os === 'windows' && source.profile.localTempDisk !== candidate.profile.localTempDisk)
+      return 'localStorage';
+    if (source.premiumIO === true && candidate.premiumIO !== true) return 'premiumIO';
+    return null;
+  }
+
+  /** Classifies a surviving candidate and produces the comparison badges shown in the UI. */
+  private evaluate(source: VmSku, candidate: VmSku, os: OperatingSystem): Evaluation {
+    const checks: CompatibilityCheck[] = [];
+    const notes: string[] = [];
+    const manual: string[] = [];
+    const conditionalNotes: string[] = [];
+
+    const sameVendor = this.isSameCpuVendor(source, candidate);
+    const sameArchitecture =
+      source.cpuArchitecture !== null && source.cpuArchitecture === candidate.cpuArchitecture;
+    checks.push(
+      this.check(
+        'cpuVendor',
+        'Same CPU vendor',
+        sameVendor,
+        sameVendor
+          ? `${candidate.cpuVendor ?? 'Unknown'} preserved`
+          : `${source.cpuVendor ?? 'Unknown'} → ${candidate.cpuVendor ?? 'Unknown'}`,
+      ),
+      this.check(
+        'architecture',
+        'Same architecture',
+        sameArchitecture,
+        sameArchitecture
+          ? `${candidate.cpuArchitecture}`
+          : `${source.cpuArchitecture ?? 'Unknown'} → ${candidate.cpuArchitecture ?? 'Unknown'}`,
+      ),
+    );
+
+    const sameFamily = this.isSameWorkloadClass(source, candidate);
+    checks.push(
+      this.check(
+        'workloadFamily',
+        'Same workload family',
+        sameFamily,
+        sameFamily
+          ? `${candidate.workloadFamily ?? 'Unknown'}-series`
+          : `${source.workloadFamily ?? 'Unknown'} → ${candidate.workloadFamily ?? 'Unknown'}`,
+      ),
+    );
+    if (!sameFamily) manual.push('workload family or profile changes');
+
+    checks.push(
+      this.check(
+        'vcpus',
+        'Same or greater vCPU',
+        true,
+        `${source.vcpusAvailable} → ${candidate.vcpusAvailable} usable vCPU`,
+      ),
+      this.check(
+        'memory',
+        'Same or greater RAM',
+        true,
+        `${source.memoryGB} GB → ${candidate.memoryGB} GB`,
+      ),
+    );
+
+    const localStorageKept =
+      (!source.profile.localTempDisk || candidate.profile.localTempDisk) &&
+      (candidate.tempDiskMB ?? 0) >= (source.tempDiskMB ?? 0);
+    const nvmeKept = !source.profile.localNvme || candidate.profile.localNvme;
+    const storageBandwidthKept =
+      !source.profile.storageBandwidthOptimized || candidate.profile.storageBandwidthOptimized;
+    const dataDisksKept = this.atLeast(candidate.maxDataDisks, source.maxDataDisks);
+    const storagePassed = localStorageKept && nvmeKept && storageBandwidthKept && dataDisksKept;
+    checks.push(
+      this.check(
+        'storage',
+        'Storage requirements preserved',
+        storagePassed,
+        this.storageDetail(source, candidate, {
+          localStorageKept,
+          nvmeKept,
+          storageBandwidthKept,
+          dataDisksKept,
+        }),
+      ),
+    );
+    if (!nvmeKept) manual.push('local NVMe storage is dropped');
+    if (!storageBandwidthKept) manual.push('storage-bandwidth optimization is dropped');
+    if (!localStorageKept) {
+      conditionalNotes.push(
+        !candidate.profile.localTempDisk
+          ? 'Cheaper if local/temp disk is not required'
+          : `Cheaper if ${this.gib(source.tempDiskMB)} of local/temp disk is not required`,
+      );
+    }
+    if (!dataDisksKept) {
+      conditionalNotes.push(
+        `Confirm ${candidate.maxDataDisks} data disks are enough (source supports ${source.maxDataDisks})`,
+      );
+    }
+
+    const networkOptimizationKept =
+      !source.profile.networkOptimized || candidate.profile.networkOptimized;
+    const acceleratedNetworkingKept =
+      source.acceleratedNetworking !== true || candidate.acceleratedNetworking === true;
+    const rdmaKept = source.rdma !== true || candidate.rdma === true;
+    const nicsKept = this.atLeast(candidate.maxNICs, source.maxNICs);
+    const networkPassed =
+      networkOptimizationKept && acceleratedNetworkingKept && rdmaKept && nicsKept;
+    checks.push(
+      this.check(
+        'network',
+        'Network requirements preserved',
+        networkPassed,
+        networkPassed
+          ? `${candidate.maxNICs ?? 'Unknown'} NICs, accelerated networking ${candidate.acceleratedNetworking ? 'supported' : 'not supported'}`
+          : 'Network bandwidth, NIC count, accelerated networking or RDMA is reduced',
+      ),
+    );
+    if (!networkPassed) manual.push('network capabilities are reduced');
+
+    const acceleratorPassed = this.isSameAccelerator(source, candidate);
+    checks.push(
+      this.check(
+        'accelerator',
+        'Accelerator preserved',
+        acceleratorPassed,
+        this.acceleratorDetail(source, candidate),
+      ),
+    );
+    if (!acceleratorPassed) manual.push('the accelerator model or class changes');
+
+    const generationPassed = this.isSameOrNewerGeneration(source, candidate);
+    checks.push(
+      this.check(
+        'generation',
+        this.isNewerGeneration(source, candidate) ? 'Newer generation' : 'Same or newer generation',
+        generationPassed,
+        `${this.generationLabel(source)} → ${this.generationLabel(candidate)}`,
+      ),
+      this.check('region', 'Available in region', true, this.catalog.displayName),
+    );
+    if (!generationPassed) manual.push('the target generation is not newer');
+
+    const hyperVKept =
+      !source.hyperVGenerations.includes('V1') || candidate.hyperVGenerations.includes('V1');
+    if (!hyperVKept) manual.push('Generation 1 images are not supported by the target');
+
+    if (os === 'linux' && !localStorageKept && !candidate.profile.localTempDisk) {
+      notes.push('Linux supports resizing to a size without local temporary storage');
+    }
+
+    let category: CandidateCategory = 'compatible';
+    if (manual.length > 0) {
+      category = 'manual-review';
+      notes.push(`Manual review: ${this.sentenceList(manual)}.`);
+    } else if (!sameVendor || !sameArchitecture) {
+      category = 'alternative-architecture';
+      notes.push(
+        'Alternative architecture: a processor vendor or architecture change must be validated and is never selected automatically.',
+      );
+    } else if (conditionalNotes.length > 0) {
+      category = 'conditional';
+    }
+    notes.push(...conditionalNotes);
+
+    return { category, checks, notes };
+  }
+
+  private toCandidate(
+    candidate: EvaluatedCandidate,
+    state: RecommendationState,
+  ): CandidateRecommendation {
+    return {
+      vm: candidate.vm,
+      state,
+      hourlyPrice: candidate.hourlyPrice,
+      monthlySaving: candidate.monthlySaving,
+      savingPercent: candidate.savingPercent,
+      checks: candidate.checks,
+      notes: candidate.notes,
+    };
+  }
+
+  private byPrice(source: VmSku): (left: EvaluatedCandidate, right: EvaluatedCandidate) => number {
+    return (left, right) =>
+      left.hourlyPrice - right.hourlyPrice ||
+      (left.vm.vcpusAvailable ?? 0) - (right.vm.vcpusAvailable ?? 0) ||
+      (left.vm.memoryGB ?? 0) - (right.vm.memoryGB ?? 0) ||
+      (right.vm.seriesVersion ?? 0) - (left.vm.seriesVersion ?? 0) ||
+      Number(this.isNewerGeneration(source, right.vm)) -
+        Number(this.isNewerGeneration(source, left.vm)) ||
+      left.vm.name.localeCompare(right.vm.name);
+  }
+
+  private explain(
+    source: VmSku,
+    recommendation: CandidateRecommendation | null,
+    mandatoryUpgrade: boolean,
+    remaining: { alternativeArchitecture: number; manualReview: number },
+  ): string {
+    const lifecycle = this.lifecycleSentence(source, mandatoryUpgrade);
+    if (!recommendation) {
+      const options: string[] = [];
+      if (remaining.alternativeArchitecture > 0) {
+        options.push(
+          `${remaining.alternativeArchitecture} alternative-architecture option(s) require a CPU vendor or architecture change`,
+        );
+      }
+      if (remaining.manualReview > 0) {
+        options.push(`${remaining.manualReview} option(s) need manual review`);
+      }
+      const summary = mandatoryUpgrade
+        ? 'Manual migration required: no same-vendor, same-profile successor is available in this region.'
+        : 'No safe cheaper replacement: every cheaper candidate fails at least one hard compatibility rule.';
+      return [lifecycle, summary, options.length > 0 ? `${this.sentenceList(options)}.` : '']
+        .filter(Boolean)
+        .join(' ');
+    }
+
+    const reasons: string[] = [];
+    const candidate = recommendation.vm;
+    if (candidate.cpuVendor && candidate.cpuVendor === source.cpuVendor) {
+      reasons.push(
+        `${candidate.cpuVendor} ${candidate.cpuArchitecture ?? ''}`.trim() + ' preserved',
+      );
+    } else if (candidate.cpuArchitecture === source.cpuArchitecture) {
+      reasons.push(`${candidate.cpuArchitecture ?? 'architecture'} preserved`);
+    }
+    if (source.workloadFamily && source.workloadFamily === candidate.workloadFamily) {
+      reasons.push(`${source.workloadFamily}-series workload profile kept`);
+    }
+    reasons.push(
+      candidate.vcpusAvailable === source.vcpusAvailable && candidate.memoryGB === source.memoryGB
+        ? 'same usable vCPU and memory'
+        : 'usable vCPU and memory preserved',
+    );
+    if (this.isNewerGeneration(source, candidate)) reasons.push('newer generation');
+    if (recommendation.savingPercent === null) {
+      reasons.push('the source PAYG price is unavailable, so no saving is claimed');
+    } else {
+      reasons.push(
+        recommendation.savingPercent >= 0
+          ? `${recommendation.savingPercent.toFixed(1)}% lower PAYG price`
+          : `${Math.abs(recommendation.savingPercent).toFixed(1)}% higher PAYG price`,
+      );
+    }
+
+    const state =
+      recommendation.state === 'lifecycle-replacement'
+        ? 'Lifecycle replacement – not a cost saving.'
+        : recommendation.state === 'conditional-saving'
+          ? 'Conditional saving – confirm the listed optional capability is unused.'
+          : recommendation.state === 'equivalent-modernization'
+            ? 'Equivalent modernization.'
+            : 'Recommended.';
+
+    return [lifecycle, state, `${this.sentenceList(reasons)}.`, ...recommendation.notes]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  private lifecycleSentence(source: VmSku, mandatoryUpgrade: boolean): string {
+    if (!source.retirement) return '';
+    const guide = migrationGuideUrl(source.retirement);
+    const suffix = guide ? ` Microsoft migration guidance: ${guide}.` : '';
+    if (isRetired(source.retirement)) {
+      return `This VM retired on ${source.retirement.eolDate}; upgrading is required.${suffix}`;
+    }
+    return mandatoryUpgrade
+      ? `This VM has an announced EOL of ${source.retirement.eolDate}; the selected policy makes upgrading required.${suffix}`
+      : `This VM has an announced EOL of ${source.retirement.eolDate}; migration can be planned before that date.${suffix}`;
   }
 
   private qualityRepresentativeSkus(): VmSku[] {
@@ -236,194 +552,147 @@ export class RecommendationEngine {
       .sort((left, right) => left.family.localeCompare(right.family));
   }
 
-  private rejectionReason(
-    source: VmSku,
-    candidate: VmSku,
-    os: OperatingSystem,
-    cpuPolicy: CpuPolicy,
-  ): keyof Omit<RejectedCandidateStatistics, 'totalCandidates'> | null {
-    if (candidate.name === source.name) return 'sourceSku';
-    if (candidate.retirement !== null) return 'retirement';
-    if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
-    if (this.priceFor(candidate, os) === null) return 'price';
-    if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
-    if (!this.isConstrained(source) && this.isConstrained(candidate)) return 'constrainedShape';
-    if (!this.isBurstable(source) && this.isBurstable(candidate)) return 'burstableClass';
+  private check(
+    id: CompatibilityCheck['id'],
+    label: string,
+    passed: boolean,
+    detail: string,
+  ): CompatibilityCheck {
+    return { id, label, passed, detail };
+  }
+
+  /**
+   * Intel and AMD are never interchanged. Arm64 SKUs stay Arm64, where the Ampere Altra and Azure
+   * Cobalt platforms share the same instruction set and are treated as one vendor domain.
+   */
+  private isSameCpuVendor(source: VmSku, candidate: VmSku): boolean {
+    if (source.cpuVendor === null || candidate.cpuVendor === null) return false;
+    if (source.cpuVendor === candidate.cpuVendor) return true;
+    return source.cpuArchitecture === 'arm64' && candidate.cpuArchitecture === 'arm64';
+  }
+
+  private isSameWorkloadClass(source: VmSku, candidate: VmSku): boolean {
+    if (source.workloadFamily === null || candidate.workloadFamily === null) return false;
+    if (source.workloadFamily !== candidate.workloadFamily) return false;
+    return (
+      source.profile.burstable === candidate.profile.burstable &&
+      source.profile.confidential === candidate.profile.confidential &&
+      source.profile.hpc === candidate.profile.hpc &&
+      (!source.profile.isolated || candidate.profile.isolated)
+    );
+  }
+
+  private isSameAccelerator(source: VmSku, candidate: VmSku): boolean {
+    if (!this.hasAccelerator(source)) return !this.hasAccelerator(candidate);
+    if (!this.hasAccelerator(candidate)) return false;
+    if (!source.accelerator || !candidate.accelerator) return false;
+    return (
+      source.accelerator.vendor === candidate.accelerator.vendor &&
+      source.accelerator.model === candidate.accelerator.model &&
+      source.accelerator.workload === candidate.accelerator.workload
+    );
+  }
+
+  private hasAccelerator(vm: VmSku): boolean {
+    return (vm.gpus ?? 0) > 0 || vm.accelerator !== null;
+  }
+
+  private isOlderGeneration(source: VmSku, candidate: VmSku): boolean {
     if (
-      source.workloadClass !== candidate.workloadClass &&
-      (source.workloadClass !== null || candidate.workloadClass !== null)
+      source.workloadFamily !== null &&
+      source.workloadFamily === candidate.workloadFamily &&
+      source.seriesVersion !== null &&
+      candidate.seriesVersion !== null &&
+      candidate.seriesVersion < source.seriesVersion
     )
-      return 'workloadAffinity';
-    if ((source.gpus ?? 0) > 0 && !this.atLeast(candidate.gpus, source.gpus)) return 'gpus';
-    if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
-    if (os === 'windows' && (source.tempDiskMB ?? 0) > 0 !== (candidate.tempDiskMB ?? 0) > 0)
-      return 'tempDisk';
-    if (source.premiumIO === true && candidate.premiumIO !== true) return 'premiumIO';
-    if (source.acceleratedNetworking === true && candidate.acceleratedNetworking !== true)
-      return 'acceleratedNetworking';
-    if (source.rdma === true && candidate.rdma !== true) return 'rdma';
-    if (source.architecture && candidate.architecture !== source.architecture)
-      return 'architecture';
-    if (cpuPolicy === 'same-vendor' && source.cpuVendor && candidate.cpuVendor !== source.cpuVendor)
-      return 'cpuVendor';
-    if (
-      source.cpuVendor !== null &&
-      source.cpuVendor === candidate.cpuVendor &&
+      return true;
+    return (
+      this.isSameCpuVendor(source, candidate) &&
       source.cpuGeneration !== null &&
       candidate.cpuGeneration !== null &&
       candidate.cpuGeneration < source.cpuGeneration
-    )
-      return 'olderGeneration';
-    return null;
-  }
-
-  private score(
-    source: VmSku,
-    candidate: VmSku,
-    sourcePrice: number | null,
-    candidatePrice: number,
-    cpuPolicy: CpuPolicy,
-  ): number {
-    let score = 1000;
-    const usableCpuDelta = candidate.vcpusAvailable! - source.vcpusAvailable!;
-    const memoryDelta = candidate.memoryGB! - source.memoryGB!;
-    const physicalCpuDelta = Math.abs(
-      (candidate.vcpus ?? candidate.vcpusAvailable!) - (source.vcpus ?? source.vcpusAvailable!),
     );
-
-    score += usableCpuDelta === 0 ? 350 : -usableCpuDelta * 90;
-    score += memoryDelta === 0 ? 300 : -memoryDelta * 18;
-    score -= physicalCpuDelta * 12;
-    score += this.isConstrained(source) === this.isConstrained(candidate) ? 120 : -120;
-
-    if (
-      source.maxDataDisks !== null &&
-      candidate.maxDataDisks !== null &&
-      candidate.maxDataDisks < source.maxDataDisks
-    ) {
-      score -= Math.min(100, (source.maxDataDisks - candidate.maxDataDisks) * 12.5);
-    }
-
-    if (source.cpuVendor && candidate.cpuVendor === source.cpuVendor) {
-      score += cpuPolicy === 'prefer-same-vendor' ? 260 : 140;
-    } else if (cpuPolicy === 'prefer-same-vendor' && source.cpuVendor) {
-      score -= 180;
-    }
-
-    if (
-      source.cpuVendor &&
-      source.cpuVendor === candidate.cpuVendor &&
-      source.cpuGeneration !== null &&
-      candidate.cpuGeneration !== null
-    ) {
-      const generationDelta = candidate.cpuGeneration - source.cpuGeneration;
-      score += generationDelta > 0 ? 320 + Math.min(generationDelta, 3) * 25 : 40;
-    } else {
-      score -= 60;
-    }
-
-    if ((source.tempDiskMB ?? 0) > 0 && (candidate.tempDiskMB ?? 0) > 0) {
-      score += candidate.tempDiskMB === source.tempDiskMB ? 90 : 40;
-    }
-
-    if (sourcePrice !== null && sourcePrice > 0) {
-      const priceRatio = candidatePrice / sourcePrice;
-      score +=
-        priceRatio <= 1
-          ? Math.min(300, (1 - priceRatio) * 400)
-          : -Math.min(1000, Math.log2(priceRatio) * 250);
-    }
-    return Math.round(score * 100) / 100;
   }
 
-  private explain(
-    source: VmSku,
-    candidate: VmSku,
-    sourcePrice: number | null,
-    candidatePrice: number,
-    mandatoryUpgrade: boolean,
-  ): string {
-    const reasons: string[] = [];
+  private isSameOrNewerGeneration(source: VmSku, candidate: VmSku): boolean {
+    return !this.isOlderGeneration(source, candidate);
+  }
+
+  private isNewerGeneration(source: VmSku, candidate: VmSku): boolean {
+    if (this.isOlderGeneration(source, candidate)) return false;
     if (
-      candidate.vcpusAvailable === source.vcpusAvailable &&
-      candidate.memoryGB === source.memoryGB
-    ) {
-      reasons.push('same usable CPU and memory');
-    } else {
-      reasons.push('required usable CPU and memory preserved');
-    }
-    if (source.cpuVendor && candidate.cpuVendor === source.cpuVendor) {
-      reasons.push(
-        `${source.cpuVendor}/${source.architecture ?? 'compatible architecture'} preserved`,
-      );
-    } else {
-      reasons.push(`${source.architecture ?? 'architecture'} compatibility preserved`);
-    }
-    if ((source.tempDiskMB ?? 0) > 0 && (candidate.tempDiskMB ?? 0) > 0) {
-      reasons.push('local temporary storage retained');
-    } else if ((source.tempDiskMB ?? 0) > 0) {
-      reasons.push('Linux supports resizing to a VM without local temporary storage');
-    } else if ((candidate.tempDiskMB ?? 0) > 0) {
-      reasons.push('Linux supports resizing to a VM with local temporary storage');
-    }
-    if (source.premiumIO) reasons.push('Premium SSD supported');
-    if (
-      source.maxDataDisks !== null &&
-      candidate.maxDataDisks !== null &&
-      candidate.maxDataDisks < source.maxDataDisks
-    ) {
-      reasons.push(
-        `reduced data disk limit (${candidate.maxDataDisks} vs ${source.maxDataDisks}) must be validated`,
-      );
-    }
-    if (
+      source.seriesVersion !== null &&
+      candidate.seriesVersion !== null &&
+      source.workloadFamily === candidate.workloadFamily &&
+      candidate.seriesVersion > source.seriesVersion
+    )
+      return true;
+    return (
       source.cpuGeneration !== null &&
       candidate.cpuGeneration !== null &&
+      this.isSameCpuVendor(source, candidate) &&
       candidate.cpuGeneration > source.cpuGeneration
-    )
-      reasons.push('newer CPU generation');
-
-    if (sourcePrice === null) {
-      reasons.push(
-        'candidate has a usable regional PAYG price, but the source PAYG price is unavailable',
-      );
-    } else {
-      const savingPercent = ((sourcePrice - candidatePrice) / sourcePrice) * 100;
-      reasons.push(
-        savingPercent >= 0
-          ? `${savingPercent.toFixed(1)}% lower PAYG price`
-          : `${Math.abs(savingPercent).toFixed(1)}% higher PAYG price`,
-      );
-    }
-    const explanation = `${this.sentenceList(reasons)}.`;
-    if (!source.retirement) return explanation;
-    if (this.isRetired(source)) {
-      return `This VM retired on ${source.retirement.eolDate}; upgrading is required. ${explanation}`;
-    }
-    return mandatoryUpgrade
-      ? `This VM has an announced EOL of ${source.retirement.eolDate}; the selected policy makes upgrading required. ${explanation}`
-      : `This VM has an announced EOL of ${source.retirement.eolDate}; migration can be planned before that date. ${explanation}`;
+    );
   }
 
-  private confidenceFor(source: VmSku, candidate: VmSku | null): Confidence {
+  private generationLabel(vm: VmSku): string {
+    const series =
+      vm.workloadFamily && vm.seriesVersion
+        ? `${vm.workloadFamily}v${vm.seriesVersion}`
+        : vm.family;
+    return vm.cpuModel ? `${series} (${vm.cpuModel})` : series;
+  }
+
+  private storageDetail(
+    source: VmSku,
+    candidate: VmSku,
+    kept: {
+      localStorageKept: boolean;
+      nvmeKept: boolean;
+      storageBandwidthKept: boolean;
+      dataDisksKept: boolean;
+    },
+  ): string {
+    if (!kept.nvmeKept) return 'Local NVMe storage is not available on the target';
+    if (!kept.storageBandwidthKept) return 'Storage-bandwidth optimization is not preserved';
+    if (!kept.localStorageKept)
+      return `Local/temp disk ${this.localStorage(source)} → ${this.localStorage(candidate)}`;
+    if (!kept.dataDisksKept)
+      return `Data disk limit ${source.maxDataDisks} → ${candidate.maxDataDisks}`;
+    return `Local/temp disk ${this.localStorage(candidate)}, ${candidate.maxDataDisks} data disks`;
+  }
+
+  /**
+   * Describes the local/temp disk. Azure reports MaxResourceVolumeMB = 0 for newer sizes, so the
+   * curated capability flag decides whether local storage exists at all.
+   */
+  private localStorage(vm: VmSku): string {
+    if (!vm.profile.localTempDisk) return 'none';
+    return (vm.tempDiskMB ?? 0) > 0 ? this.gib(vm.tempDiskMB) : 'included';
+  }
+
+  private acceleratorDetail(source: VmSku, candidate: VmSku): string {
+    if (!this.hasAccelerator(source)) {
+      return this.hasAccelerator(candidate) ? 'Target adds an accelerator' : 'No accelerator';
+    }
+    const describe = (vm: VmSku): string =>
+      vm.accelerator
+        ? `${vm.gpus ?? '?'}× ${vm.accelerator.vendor} ${vm.accelerator.model}`
+        : 'None';
+    return `${describe(source)} → ${describe(candidate)}`;
+  }
+
+  private confidenceFor(source: VmSku, candidate: CandidateRecommendation | null): Confidence {
     if (this.missingCriticalCapabilities(source).length > 0) return 'Low';
+    if (!candidate) return source.cpuVendor && source.workloadFamily ? 'Medium' : 'Low';
     if (
       !source.cpuVendor ||
       source.cpuGeneration === null ||
-      !candidate ||
-      !candidate.cpuVendor ||
-      candidate.cpuGeneration === null
+      !candidate.vm.cpuVendor ||
+      candidate.vm.cpuGeneration === null
     )
       return 'Medium';
-    if (
-      candidate.vcpusAvailable === source.vcpusAvailable &&
-      candidate.memoryGB === source.memoryGB &&
-      (source.maxDataDisks === null ||
-        candidate.maxDataDisks === null ||
-        candidate.maxDataDisks >= source.maxDataDisks)
-    )
-      return 'High';
-    return 'Medium';
+    return candidate.checks.every((check) => check.passed) ? 'High' : 'Medium';
   }
 
   private missingCriticalCapabilities(vm: VmSku): string[] {
@@ -432,7 +701,7 @@ export class RecommendationEngine {
     if (vm.memoryGB === null) missing.push('memory');
     if (vm.maxDataDisks === null) missing.push('data disk limit');
     if (vm.tempDiskMB === null) missing.push('temporary disk');
-    if (vm.architecture === null) missing.push('architecture');
+    if (vm.cpuArchitecture === null) missing.push('architecture');
     return missing;
   }
 
@@ -445,27 +714,25 @@ export class RecommendationEngine {
     return source === null || (candidate !== null && candidate >= source);
   }
 
+  private gib(megabytes: number | null): string {
+    return megabytes === null ? 'Unknown' : `${Math.round(megabytes / 1024)} GiB`;
+  }
+
   private emptyStatistics(): RejectedCandidateStatistics {
     return {
       totalCandidates: 0,
       sourceSku: 0,
       price: 0,
+      subscriptionRestriction: 0,
+      retirement: 0,
       usableVcpus: 0,
+      memory: 0,
       constrainedShape: 0,
       burstableClass: 0,
-      workloadAffinity: 0,
-      subscriptionRestriction: 0,
-      gpus: 0,
-      memory: 0,
-      dataDisks: 0,
-      tempDisk: 0,
-      premiumIO: 0,
-      acceleratedNetworking: 0,
-      rdma: 0,
-      architecture: 0,
-      cpuVendor: 0,
       olderGeneration: 0,
-      retirement: 0,
+      localStorage: 0,
+      premiumIO: 0,
+      accelerator: 0,
     };
   }
 
@@ -485,6 +752,9 @@ export class RecommendationEngine {
       source: null,
       recommendation: null,
       alternatives: [],
+      conditional: [],
+      alternativeArchitecture: [],
+      manualReview: [],
       rejected,
       explanation,
       confidence: 'Low',
@@ -492,18 +762,8 @@ export class RecommendationEngine {
     };
   }
 
-  private isRetired(vm: VmSku): boolean {
-    if (!vm.retirement) return false;
-    const endOfLife = Date.parse(`${vm.retirement.eolDate}T23:59:59Z`);
-    return Number.isFinite(endOfLife) && endOfLife < Date.now();
-  }
-
   private isConstrained(vm: VmSku): boolean {
     return vm.vcpus !== null && vm.vcpusAvailable !== null && vm.vcpusAvailable < vm.vcpus;
-  }
-
-  private isBurstable(vm: VmSku): boolean {
-    return BURSTABLE_FAMILIES.has(vm.family.toLowerCase());
   }
 
   private hasLocationRestriction(vm: VmSku, region: string): boolean {
@@ -512,22 +772,6 @@ export class RecommendationEngine {
         restriction.type.toLowerCase() === 'location' &&
         restriction.reasonCode === 'NotAvailableForSubscription' &&
         restriction.values.some((value) => value.toLowerCase() === region.toLowerCase()),
-    );
-  }
-
-  private isMaterialUpgrade(
-    source: VmSku,
-    candidate: VmSku,
-    sourcePrice: number | null,
-    candidatePrice: number,
-  ): boolean {
-    if (sourcePrice !== null && candidatePrice < sourcePrice * 0.99) return true;
-    return (
-      source.cpuVendor !== null &&
-      source.cpuVendor === candidate.cpuVendor &&
-      source.cpuGeneration !== null &&
-      candidate.cpuGeneration !== null &&
-      candidate.cpuGeneration > source.cpuGeneration
     );
   }
 

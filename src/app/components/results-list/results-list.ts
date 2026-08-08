@@ -1,6 +1,18 @@
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { CandidateRecommendation, RecommendationResult, VmSku } from '../../models/vm.models';
+import {
+  CandidateRecommendation,
+  CompatibilityCheck,
+  RecommendationResult,
+  RecommendationStatus,
+  VmSku,
+} from '../../models/vm.models';
+
+interface CandidateList {
+  key: string;
+  title: string;
+  candidates: CandidateRecommendation[];
+}
 
 interface ResultGroup {
   key: string;
@@ -31,60 +43,57 @@ export class ResultsListComponent {
         (right.recommendation?.monthlySaving ?? Number.NEGATIVE_INFINITY) -
         (left.recommendation?.monthlySaving ?? Number.NEGATIVE_INFINITY),
     );
-    const mandatory = sorted.filter((result) => result.mandatoryUpgrade);
-    const saving = sorted.filter(
-      (result) => !result.mandatoryUpgrade && (result.recommendation?.monthlySaving ?? 0) > 0.005,
-    );
-    const neutral = sorted.filter(
-      (result) =>
-        !result.mandatoryUpgrade &&
-        result.recommendation?.monthlySaving !== null &&
-        result.recommendation !== null &&
-        Math.abs(result.recommendation.monthlySaving) <= 0.005,
-    );
-    const increase = sorted.filter(
-      (result) =>
-        !result.mandatoryUpgrade &&
-        result.recommendation?.monthlySaving !== null &&
-        result.recommendation !== null &&
-        result.recommendation.monthlySaving < -0.005,
-    );
-    const unavailable = sorted.filter(
-      (result) =>
-        !result.mandatoryUpgrade &&
-        (result.recommendation === null || result.recommendation.monthlySaving === null),
-    );
+    const inState = (...states: RecommendationStatus[]): RecommendationResult[] =>
+      sorted.filter((result) => states.includes(result.status));
 
     return [
       {
-        key: 'mandatory',
-        title: 'Mandatory upgrades',
-        description: 'Retired VM sizes that must be replaced, ordered by monthly saving.',
-        results: mandatory,
+        key: 'lifecycle',
+        title: 'Lifecycle replacements',
+        description:
+          'Retired or retiring VM sizes that must be replaced. A lifecycle replacement is not a cost optimization.',
+        results: sorted.filter(
+          (result) =>
+            result.mandatoryUpgrade ||
+            result.status === 'lifecycle-replacement' ||
+            result.status === 'manual-migration-required',
+        ),
       },
       {
-        key: 'saving',
-        title: 'Monthly savings',
-        description: 'Compatible upgrades ordered from highest to lowest estimated monthly saving.',
-        results: saving,
+        key: 'recommended',
+        title: 'Recommended',
+        description: 'Fully compatible replacements that are at least 5% cheaper.',
+        results: inState('recommended').filter((result) => !result.mandatoryUpgrade),
       },
       {
-        key: 'neutral',
-        title: 'No monthly price change',
-        description: 'Compatible upgrades with no material monthly retail price difference.',
-        results: neutral,
+        key: 'modernization',
+        title: 'Equivalent modernization',
+        description: 'Fully compatible newer generations priced within 5% of the current VM size.',
+        results: inState('equivalent-modernization').filter((result) => !result.mandatoryUpgrade),
       },
       {
-        key: 'increase',
-        title: 'Monthly cost increase',
-        description: 'Compatible upgrades with a strictly higher estimated monthly cost.',
-        results: increase,
+        key: 'conditional',
+        title: 'Conditional savings',
+        description:
+          'Cheaper only if an optional capability such as the local temp disk is confirmed unused.',
+        results: inState('conditional-saving').filter((result) => !result.mandatoryUpgrade),
       },
       {
-        key: 'unavailable',
-        title: 'Savings unavailable',
-        description: 'Sources without a current price or compatible recommendation.',
-        results: unavailable,
+        key: 'review',
+        title: 'Manual review',
+        description:
+          'No compatible cheaper replacement. Alternative architectures and profile changes are listed for manual review.',
+        results: inState(
+          'no-safe-cheaper-replacement',
+          'manual-review',
+          'alternative-architecture',
+        ).filter((result) => !result.mandatoryUpgrade),
+      },
+      {
+        key: 'unknown',
+        title: 'Not analyzed',
+        description: 'VM sizes that are unknown in this region or lack authoritative capabilities.',
+        results: inState('sku-not-found', 'incomplete-capabilities'),
       },
     ].filter((group) => group.results.length > 0);
   });
@@ -105,6 +114,69 @@ export class ResultsListComponent {
 
   protected yesNo(value: boolean | null): string {
     return value === null ? 'Unknown' : value ? 'Yes' : 'No';
+  }
+
+  protected localStorage(vm: VmSku | null | undefined): string {
+    if (!vm) return 'Unknown';
+    if (!vm.profile.localTempDisk) return 'None';
+    return (vm.tempDiskMB ?? 0) > 0 ? this.gbFromMb(vm.tempDiskMB) : 'Included';
+  }
+
+  protected absolute(value: number): number {
+    return Math.abs(value);
+  }
+
+  protected candidateLists(result: RecommendationResult): CandidateList[] {
+    return [
+      { key: 'alternatives', title: 'Alternative candidates', candidates: result.alternatives },
+      {
+        key: 'conditional',
+        title: 'Conditional – cheaper if the optional capability is not required',
+        candidates: result.conditional,
+      },
+      {
+        key: 'architecture',
+        title: 'Alternative architecture – never selected automatically',
+        candidates: result.alternativeArchitecture,
+      },
+      { key: 'review', title: 'Manual review', candidates: result.manualReview },
+    ].filter((list) => list.candidates.length > 0);
+  }
+
+  protected badges(candidate: CandidateRecommendation): CompatibilityCheck[] {
+    return candidate.checks;
+  }
+
+  protected stateLabel(result: RecommendationResult): string {
+    return (
+      {
+        recommended: 'Recommended',
+        'equivalent-modernization': 'Equivalent modernization',
+        'conditional-saving': 'Conditional saving',
+        'lifecycle-replacement': 'Lifecycle replacement – not a cost saving',
+        'alternative-architecture': 'Alternative architecture',
+        'manual-review': 'Manual review',
+        'manual-migration-required': 'Manual migration required',
+        'no-safe-cheaper-replacement': 'No safe cheaper replacement',
+        'sku-not-found': 'VM size not found',
+        'incomplete-capabilities': 'Incomplete Azure metadata',
+      } as Record<RecommendationStatus, string>
+    )[result.status];
+  }
+
+  protected accelerator(vm: VmSku | null | undefined): string {
+    if (!vm) return 'Unknown';
+    if (!vm.accelerator && (vm.gpus ?? 0) === 0) return 'None';
+    return vm.accelerator
+      ? `${vm.gpus ?? '?'}× ${vm.accelerator.vendor} ${vm.accelerator.model}`
+      : `${vm.gpus} GPU`;
+  }
+
+  protected generation(vm: VmSku | null | undefined): string {
+    if (!vm) return 'Unknown';
+    return vm.workloadFamily && vm.seriesVersion
+      ? `${vm.workloadFamily}v${vm.seriesVersion}`
+      : vm.family;
   }
 
   protected gbFromMb(value: number | null): string {

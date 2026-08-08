@@ -1,7 +1,11 @@
 export type OperatingSystem = 'linux' | 'windows';
 export type CurrencyCode = 'USD' | 'EUR' | 'GBP';
-export type CpuPolicy = 'same-vendor' | 'prefer-same-vendor' | 'any-compatible';
 export type Confidence = 'High' | 'Medium' | 'Low';
+export type CpuVendor = 'Intel' | 'AMD' | 'Microsoft' | 'Ampere' | 'NVIDIA' | 'other';
+export type CpuArchitecture = 'x64' | 'arm64';
+export type AcceleratorWorkload =
+  'gpu-compute' | 'gpu-training' | 'gpu-visualization' | 'gpu-gaming' | 'fpga';
+export type LifecycleStatus = 'current' | 'previousGeneration' | 'retirementAnnounced' | 'retired';
 
 export interface VmPrices {
   linuxPaygHourly: number | null;
@@ -22,6 +26,7 @@ export interface VmRetirement {
   eolDate: string;
   description: string;
   sourceUrl: string;
+  migrationGuideUrl?: string;
   regionEolDates?: Record<string, string>;
 }
 
@@ -30,15 +35,40 @@ export interface RetirementCatalog {
   skus: Record<string, VmRetirement>;
 }
 
-export type WorkloadClass =
-  | 'confidential-compute'
-  | 'gpu-compute'
-  | 'gpu-training'
-  | 'gpu-visualization'
-  | 'local-nvme';
+export interface CpuFamilyMetadata {
+  vendor: CpuVendor;
+  architecture: CpuArchitecture;
+  generation: number;
+  model: string;
+}
+
+export type CpuCatalog = Record<string, CpuFamilyMetadata>;
+
+export interface AcceleratorMetadata {
+  vendor: string;
+  model: string;
+  workload: AcceleratorWorkload;
+}
+
+export interface VmProfile {
+  burstable: boolean;
+  localTempDisk: boolean;
+  localNvme: boolean;
+  storageBandwidthOptimized: boolean;
+  networkOptimized: boolean;
+  isolated: boolean;
+  confidential: boolean;
+  hpc: boolean;
+}
+
+export interface WorkloadFamilyMetadata extends VmProfile {
+  workloadFamily: string;
+  seriesVersion: number;
+  accelerator: AcceleratorMetadata | null;
+}
 
 export interface WorkloadCatalog {
-  families: Record<string, WorkloadClass>;
+  families: Record<string, WorkloadFamilyMetadata>;
 }
 
 export interface VmSku {
@@ -59,12 +89,18 @@ export interface VmSku {
   rdma: boolean | null;
   architecture: string | null;
   hyperVGenerations: string[];
-  cpuVendor: string | null;
+  cpuVendor: CpuVendor | null;
+  cpuArchitecture: CpuArchitecture | null;
+  cpuModel: string | null;
   cpuGeneration: number | null;
+  workloadFamily: string | null;
+  seriesVersion: number | null;
+  profile: VmProfile;
+  accelerator: AcceleratorMetadata | null;
   zones: string[];
   restrictions: VmRestriction[];
   retirement: VmRetirement | null;
-  workloadClass: WorkloadClass | null;
+  lifecycleStatus: LifecycleStatus;
   prices: VmPrices;
 }
 
@@ -88,38 +124,60 @@ export interface RejectedCandidateStatistics {
   totalCandidates: number;
   sourceSku: number;
   price: number;
+  subscriptionRestriction: number;
+  retirement: number;
   usableVcpus: number;
+  memory: number;
   constrainedShape: number;
   burstableClass: number;
-  workloadAffinity: number;
-  subscriptionRestriction: number;
-  gpus: number;
-  memory: number;
-  dataDisks: number;
-  tempDisk: number;
-  premiumIO: number;
-  acceleratedNetworking: number;
-  rdma: number;
-  architecture: number;
-  cpuVendor: number;
   olderGeneration: number;
-  retirement: number;
+  localStorage: number;
+  premiumIO: number;
+  accelerator: number;
 }
 
-export type RecommendationStatus =
+export type RecommendationState =
   | 'recommended'
+  | 'equivalent-modernization'
+  | 'conditional-saving'
+  | 'lifecycle-replacement'
+  | 'alternative-architecture'
+  | 'manual-review';
+
+export type RecommendationStatus =
+  | RecommendationState
+  | 'manual-migration-required'
+  | 'no-safe-cheaper-replacement'
   | 'sku-not-found'
-  | 'source-price-missing'
-  | 'incomplete-capabilities'
-  | 'no-upgrade-needed'
-  | 'no-compatible-replacement';
+  | 'incomplete-capabilities';
+
+export type CompatibilityCheckId =
+  | 'cpuVendor'
+  | 'architecture'
+  | 'workloadFamily'
+  | 'vcpus'
+  | 'memory'
+  | 'storage'
+  | 'network'
+  | 'accelerator'
+  | 'generation'
+  | 'region';
+
+export interface CompatibilityCheck {
+  id: CompatibilityCheckId;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
 
 export interface CandidateRecommendation {
   vm: VmSku;
-  score: number;
+  state: RecommendationState;
   hourlyPrice: number;
   monthlySaving: number | null;
   savingPercent: number | null;
+  checks: CompatibilityCheck[];
+  notes: string[];
 }
 
 export interface RecommendationResult {
@@ -130,6 +188,9 @@ export interface RecommendationResult {
   source: VmSku | null;
   recommendation: CandidateRecommendation | null;
   alternatives: CandidateRecommendation[];
+  conditional: CandidateRecommendation[];
+  alternativeArchitecture: CandidateRecommendation[];
+  manualReview: CandidateRecommendation[];
   rejected: RejectedCandidateStatistics;
   explanation: string;
   confidence: Confidence;
@@ -141,9 +202,9 @@ export interface QualityMatrixRow {
   family: string;
   sourceSku: string;
   os: OperatingSystem;
-  cpuPolicy: string;
   status: RecommendationStatus;
   recommendation: string;
+  recommendationState: string;
   sourceHourly: number | null;
   recommendedHourly: number | null;
   monthlySaving: number | null;
@@ -151,5 +212,6 @@ export interface QualityMatrixRow {
   confidence: Confidence;
   explanation: string;
   mandatoryUpgrade: boolean;
+  sourceLifecycleStatus: LifecycleStatus;
   sourceEolDate: string;
 }

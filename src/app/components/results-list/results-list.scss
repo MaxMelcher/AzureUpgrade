@@ -352,3 +352,31 @@ strong {
     grid-column: 1 / -1;
   }
 }
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.badge {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 4px 10px;
+}
+.badge.passed {
+  background: rgba(16, 137, 62, 0.09);
+  border-color: rgba(16, 137, 62, 0.45);
+  color: #0f7a38;
+}
+.badge.failed {
+  background: rgba(190, 41, 41, 0.09);
+  border-color: rgba(190, 41, 41, 0.4);
+  color: #b02a2a;
+}
+.candidate-notes {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+  padding-left: 18px;
+}

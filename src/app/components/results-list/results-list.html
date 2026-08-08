@@ -69,11 +69,7 @@
 
                 <div class="vm recommended" data-label="Recommended VM">
                   <small>Recommended VM</small>
-                  <strong>{{
-                    result.status === 'no-upgrade-needed'
-                      ? 'Keep current VM'
-                      : (result.recommendation?.vm?.name ?? 'No recommendation')
-                  }}</strong>
+                  <strong>{{ result.recommendation?.vm?.name ?? 'Keep current VM' }}</strong>
                   @if (result.recommendation) {
                     <span
                       >{{ result.recommendation.vm.vcpusAvailable }} vCPU ·
@@ -87,7 +83,13 @@
                 <div class="summary-cell">
                   <small>CPU</small>
                   <strong>{{ result.recommendation?.vm?.cpuVendor ?? '—' }}</strong>
-                  <span>{{ result.recommendation?.vm?.architecture ?? 'Unknown' }}</span>
+                  <span>{{ result.recommendation?.vm?.cpuArchitecture ?? 'Unknown' }}</span>
+                </div>
+
+                <div class="summary-cell">
+                  <small>Result</small>
+                  <strong>{{ stateLabel(result) }}</strong>
+                  <span>{{ result.source?.lifecycleStatus ?? 'unknown' }}</span>
                 </div>
 
                 <div class="summary-cell">
@@ -103,9 +105,9 @@
                       >ⓘ</a
                     >
                   </small>
-                  <strong>{{ gbFromMb(result.recommendation?.vm?.tempDiskMB ?? null) }}</strong>
+                  <strong>{{ localStorage(result.recommendation?.vm) }}</strong>
                   <span>{{
-                    result.recommendation?.vm?.tempDiskMB ? 'Preserved' : 'Not required'
+                    result.recommendation?.vm?.profile?.localTempDisk ? 'Preserved' : 'Not required'
                   }}</span>
                 </div>
 
@@ -155,7 +157,21 @@
                     <p class="explanation">{{ result.explanation }}</p>
                     <div class="comparison">
                       <div class="comparison-head">
-                        <span>Capability</span><strong>Current</strong><strong>Recommended</strong>
+                        <span>Capability</span><strong>Source</strong><strong>Destination</strong>
+                      </div>
+                      <div>
+                        <span>CPU vendor / architecture</span
+                        ><b
+                          >{{ result.source.cpuVendor ?? 'Unknown' }} /
+                          {{ result.source.cpuArchitecture ?? 'Unknown' }}</b
+                        ><b
+                          >{{ candidate.vm.cpuVendor ?? 'Unknown' }} /
+                          {{ candidate.vm.cpuArchitecture ?? 'Unknown' }}</b
+                        >
+                      </div>
+                      <div>
+                        <span>Processor</span><b>{{ result.source.cpuModel ?? 'Unknown' }}</b
+                        ><b>{{ candidate.vm.cpuModel ?? 'Unknown' }}</b>
                       </div>
                       <div>
                         <span>Usable vCPU</span><b>{{ result.source.vcpusAvailable }}</b
@@ -166,45 +182,85 @@
                         ><b>{{ candidate.vm.vcpus }}</b>
                       </div>
                       <div>
-                        <span>GPUs</span><b>{{ result.source.gpus ?? 'Unknown' }}</b
-                        ><b>{{ candidate.vm.gpus ?? 'Unknown' }}</b>
-                      </div>
-                      <div>
                         <span>Memory</span><b>{{ result.source.memoryGB }} GB</b
                         ><b>{{ candidate.vm.memoryGB }} GB</b>
                       </div>
                       <div>
-                        <span>Architecture</span><b>{{ result.source.architecture ?? 'Unknown' }}</b
-                        ><b>{{ candidate.vm.architecture ?? 'Unknown' }}</b>
+                        <span>Temp / local disk</span><b>{{ localStorage(result.source) }}</b
+                        ><b>{{ localStorage(candidate.vm) }}</b>
                       </div>
                       <div>
-                        <span>CPU vendor / generation</span
+                        <span>Storage throughput profile</span
                         ><b
-                          >{{ result.source.cpuVendor ?? 'Unknown' }} /
-                          {{ result.source.cpuGeneration ?? 'Unknown' }}</b
+                          >{{ yesNo(result.source.premiumIO) }} Premium IO ·
+                          {{ result.source.maxDataDisks ?? 'Unknown' }} data disks</b
                         ><b
-                          >{{ candidate.vm.cpuVendor ?? 'Unknown' }} /
-                          {{ candidate.vm.cpuGeneration ?? 'Unknown' }}</b
+                          >{{ yesNo(candidate.vm.premiumIO) }} Premium IO ·
+                          {{ candidate.vm.maxDataDisks ?? 'Unknown' }} data disks</b
                         >
                       </div>
                       <div>
-                        <span>Temporary disk</span><b>{{ gbFromMb(result.source.tempDiskMB) }}</b
-                        ><b>{{ gbFromMb(candidate.vm.tempDiskMB) }}</b>
+                        <span>Network bandwidth profile</span
+                        ><b
+                          >{{ result.source.maxNICs ?? 'Unknown' }} NICs · accelerated networking
+                          {{ yesNo(result.source.acceleratedNetworking) }}</b
+                        ><b
+                          >{{ candidate.vm.maxNICs ?? 'Unknown' }} NICs · accelerated networking
+                          {{ yesNo(candidate.vm.acceleratedNetworking) }}</b
+                        >
                       </div>
                       <div>
-                        <span>Premium IO</span><b>{{ yesNo(result.source.premiumIO) }}</b
-                        ><b>{{ yesNo(candidate.vm.premiumIO) }}</b>
+                        <span>Accelerator</span><b>{{ accelerator(result.source) }}</b
+                        ><b>{{ accelerator(candidate.vm) }}</b>
                       </div>
                       <div>
-                        <span>Data disks</span><b>{{ result.source.maxDataDisks ?? 'Unknown' }}</b
-                        ><b>{{ candidate.vm.maxDataDisks ?? 'Unknown' }}</b>
+                        <span>Generation</span><b>{{ generation(result.source) }}</b
+                        ><b>{{ generation(candidate.vm) }}</b>
                       </div>
                       <div>
-                        <span>Accelerated networking</span
-                        ><b>{{ yesNo(result.source.acceleratedNetworking) }}</b
-                        ><b>{{ yesNo(candidate.vm.acceleratedNetworking) }}</b>
+                        <span>Lifecycle</span
+                        ><b
+                          >{{ result.source.lifecycleStatus
+                          }}{{
+                            result.source.retirement
+                              ? ' · EOL ' + result.source.retirement.eolDate
+                              : ''
+                          }}</b
+                        ><b>{{ candidate.vm.lifecycleStatus }}</b>
                       </div>
                     </div>
+
+                    <div class="badges">
+                      @for (badge of badges(candidate); track badge.id) {
+                        <span
+                          class="badge"
+                          [class.passed]="badge.passed"
+                          [class.failed]="!badge.passed"
+                          [title]="badge.detail"
+                        >
+                          {{ badge.passed ? '✓' : '✕' }} {{ badge.label }}
+                        </span>
+                      }
+                      @if (candidate.savingPercent !== null) {
+                        <span
+                          class="badge price"
+                          [class.passed]="candidate.savingPercent > 0"
+                          [class.failed]="candidate.savingPercent < 0"
+                        >
+                          {{ candidate.savingPercent > 0 ? '↓' : '↑' }}
+                          {{ absolute(candidate.savingPercent) | number: '1.0-0' }}%
+                          {{ candidate.savingPercent > 0 ? 'cheaper' : 'more expensive' }}
+                        </span>
+                      }
+                    </div>
+
+                    @if (candidate.notes.length > 0) {
+                      <ul class="candidate-notes">
+                        @for (note of candidate.notes; track note) {
+                          <li>{{ note }}</li>
+                        }
+                      </ul>
+                    }
 
                     <div class="pricing-comparison">
                       <div class="pricing-head">
@@ -265,10 +321,10 @@
                       </div>
                     </div>
 
-                    @if (result.alternatives.length > 0) {
+                    @for (list of candidateLists(result); track list.key) {
                       <div class="alternatives">
-                        <h3>Alternative candidates</h3>
-                        @for (alternative of result.alternatives; track alternative.vm.name) {
+                        <h3>{{ list.title }}</h3>
+                        @for (alternative of list.candidates; track alternative.vm.name) {
                           <span
                             >{{ alternative.vm.name }} ·
                             {{

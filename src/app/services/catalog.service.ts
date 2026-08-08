@@ -2,13 +2,15 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, forkJoin, map, of, shareReplay, tap } from 'rxjs';
 import {
+  CpuCatalog,
   RegionInfo,
   RegionalCatalog,
   RetirementCatalog,
   WorkloadCatalog,
   CurrencyCode,
 } from '../models/vm.models';
-import { applyRetirementMetadata } from './retirement-metadata';
+import { applyCpuMetadata } from './cpu-metadata';
+import { applyLifecycleStatus, applyRetirementMetadata } from './retirement-metadata';
 import { applyWorkloadMetadata } from './workload-metadata';
 
 @Injectable({ providedIn: 'root' })
@@ -20,6 +22,9 @@ export class CatalogService {
     .pipe(shareReplay(1));
   private readonly workloadMetadata = this.http
     .get<WorkloadCatalog>('assets/data/workload-families.json')
+    .pipe(shareReplay(1));
+  private readonly cpuMetadata = this.http
+    .get<CpuCatalog>('assets/data/cpu-families.json')
     .pipe(shareReplay(1));
 
   public loadRegions(): Observable<RegionInfo[]> {
@@ -41,9 +46,15 @@ export class CatalogService {
       ),
       retirements: this.retirementMetadata,
       workloads: this.workloadMetadata,
+      cpus: this.cpuMetadata,
     }).pipe(
-      map(({ catalog, retirements, workloads }) =>
-        applyWorkloadMetadata(applyRetirementMetadata(catalog, retirements), workloads),
+      map(({ catalog, retirements, workloads, cpus }) =>
+        applyLifecycleStatus(
+          applyRetirementMetadata(
+            applyWorkloadMetadata(applyCpuMetadata(catalog, cpus), workloads),
+            retirements,
+          ),
+        ),
       ),
       tap((catalog) => this.regionCache.set(cacheKey, catalog)),
       shareReplay(1),
