@@ -2,7 +2,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { QualityMatrixRow, RegionalCatalog } from '../src/app/models/vm.models';
 import { RecommendationEngine } from '../src/app/services/recommendation-engine';
-import { applyRetirementMetadata } from '../src/app/services/retirement-metadata';
+import { applyCpuMetadata } from '../src/app/services/cpu-metadata';
+import {
+  applyLifecycleStatus,
+  applyRetirementMetadata,
+} from '../src/app/services/retirement-metadata';
 import { applyWorkloadMetadata } from '../src/app/services/workload-metadata';
 
 const root = resolve(__dirname, '..', '..');
@@ -20,9 +24,12 @@ const retirements = JSON.parse(
 const workloads = JSON.parse(
   readFileSync(resolve(root, 'src/assets/data/workload-families.json'), 'utf8'),
 );
-const catalog = applyWorkloadMetadata(
-  applyRetirementMetadata(rawCatalog, retirements),
-  workloads,
+const cpus = JSON.parse(readFileSync(resolve(root, 'src/assets/data/cpu-families.json'), 'utf8'));
+const catalog = applyLifecycleStatus(
+  applyRetirementMetadata(
+    applyWorkloadMetadata(applyCpuMetadata(rawCatalog, cpus), workloads),
+    retirements,
+  ),
 );
 const rows: QualityMatrixRow[] = new RecommendationEngine(catalog).createQualityMatrix(['linux']);
 console.log(`${region}: ${rows.length.toLocaleString()} Linux combinations`);
@@ -32,8 +39,9 @@ const header = [
   'Family',
   'Source VM',
   'OS',
-  'CPU policy',
   'Status',
+  'Recommendation state',
+  'Lifecycle',
   'Mandatory upgrade',
   'EOL date',
   'Recommended VM',
@@ -52,8 +60,9 @@ const csvRows = [
     row.family,
     row.sourceSku,
     row.os,
-    row.cpuPolicy,
     row.status,
+    row.recommendationState,
+    row.sourceLifecycleStatus,
     row.mandatoryUpgrade ? 'Yes' : 'No',
     row.sourceEolDate,
     row.recommendation,

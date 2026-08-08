@@ -11,6 +11,9 @@
   "include": [
     "tools/Generate-RecommendationMatrix.ts",
     "src/app/models/vm.models.ts",
-    "src/app/services/recommendation-engine.ts"
+    "src/app/services/recommendation-engine.ts",
+    "src/app/services/cpu-metadata.ts",
+    "src/app/services/retirement-metadata.ts",
+    "src/app/services/workload-metadata.ts"
   ]
 }

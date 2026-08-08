@@ -144,7 +144,6 @@ export class App implements OnInit {
               sku,
               request.region,
               request.os,
-              request.cpuPolicy,
               request.requireUpgradeForEol,
             ),
           ),

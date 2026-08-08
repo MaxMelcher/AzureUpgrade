@@ -1,12 +1,11 @@
 import { ChangeDetectionStrategy, Component, effect, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CpuPolicy, CurrencyCode, OperatingSystem, RegionInfo } from '../../models/vm.models';
+import { CurrencyCode, OperatingSystem, RegionInfo } from '../../models/vm.models';
 
 export interface AdvisorRequest {
   region: string;
   os: OperatingSystem;
   currency: CurrencyCode;
-  cpuPolicy: CpuPolicy;
   requireUpgradeForEol: boolean;
   skus: string[];
 }
@@ -27,7 +26,6 @@ export class AdvisorFormComponent {
   protected region = '';
   protected os: OperatingSystem = 'linux';
   protected currency: CurrencyCode = 'GBP';
-  protected cpuPolicy: CpuPolicy = 'prefer-same-vendor';
   protected requireUpgradeForEol = false;
   protected skuInput = [
     'Standard_D2as_v5',
@@ -79,7 +77,6 @@ export class AdvisorFormComponent {
       region: this.region,
       os: this.os,
       currency: this.currency,
-      cpuPolicy: this.cpuPolicy,
       requireUpgradeForEol: this.requireUpgradeForEol,
       skus,
     });

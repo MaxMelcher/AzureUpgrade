@@ -1,5 +1,6 @@
 import { RegionalCatalog, RetirementCatalog, VmSku } from '../models/vm.models';
-import { applyRetirementMetadata } from './retirement-metadata';
+import { applyRetirementMetadata, applyLifecycleStatus } from './retirement-metadata';
+import { region as regionOf, vm as baseVm } from './vm.fixtures';
 
 describe('applyRetirementMetadata', () => {
   it('matches authoritative family identifiers case-insensitively', () => {
@@ -38,6 +39,39 @@ describe('applyRetirementMetadata', () => {
     const catalog = applyRetirementMetadata(region(vm()), metadata);
     expect(catalog.skus[0].retirement?.eolDate).toBe('2028-05-01');
   });
+
+  it('classifies lifecycle status from the newest series in the catalog', () => {
+    const previous = baseVm({
+      name: 'Standard_D4s_v5',
+      family: 'standardDSv5Family',
+      seriesVersion: 5,
+      cpuVendor: 'Intel',
+      cpuArchitecture: 'x64',
+    });
+    const current = baseVm({
+      name: 'Standard_D4s_v6',
+      family: 'StandardDsv6Family',
+      seriesVersion: 6,
+      cpuVendor: 'Intel',
+      cpuArchitecture: 'x64',
+    });
+    const retiring = baseVm({
+      name: 'Standard_D4_v2',
+      family: 'standardDv2Family',
+      seriesVersion: 2,
+      cpuVendor: 'Intel',
+      cpuArchitecture: 'x64',
+      retirement: retirement('2028-05-01'),
+    });
+
+    const catalog = applyLifecycleStatus(regionOf([previous, current, retiring]));
+    const status = (name: string) =>
+      catalog.skus.find((sku) => sku.name === name)?.lifecycleStatus;
+
+    expect(status('Standard_D4s_v6')).toBe('current');
+    expect(status('Standard_D4s_v5')).toBe('previousGeneration');
+    expect(status('Standard_D4_v2')).toBe('retirementAnnounced');
+  });
 });
 
 function retirement(eolDate: string) {
@@ -49,48 +83,18 @@ function retirement(eolDate: string) {
 }
 
 function region(sku: VmSku): RegionalCatalog {
-  return {
-    schemaVersion: 1,
-    generatedAt: '2026-01-01T00:00:00Z',
-    currencyCode: 'GBP',
-    region: 'uksouth',
-    displayName: 'UK South',
-    skus: [sku],
-  };
+  return regionOf([sku], { currencyCode: 'GBP', region: 'uksouth', displayName: 'UK South' });
 }
 
 function vm(): VmSku {
-  return {
+  return baseVm({
     name: 'Standard_DS3_v2',
     family: 'standardDSv2Family',
     region: 'uksouth',
-    tier: 'Standard',
-    vcpus: 4,
-    vcpusAvailable: 4,
-    gpus: 0,
-    memoryGB: 14,
-    tempDiskMB: 28672,
-    maxDataDisks: 16,
-    maxNICs: 4,
-    premiumIO: true,
-    acceleratedNetworking: true,
-    ephemeralOSDisk: false,
-    rdma: false,
-    architecture: 'x64',
-    hyperVGenerations: ['V1'],
     cpuVendor: 'Intel',
+    cpuModel: 'Intel Xeon (Haswell/Broadwell)',
     cpuGeneration: 1,
-    zones: [],
-    restrictions: [],
-    retirement: null,
-    workloadClass: null,
-    prices: {
-      linuxPaygHourly: null,
-      windowsPaygHourly: null,
-      linuxReservation1Year: null,
-      linuxReservation3Year: null,
-      windowsReservation1Year: null,
-      windowsReservation3Year: null,
-    },
-  };
+    workloadFamily: 'D',
+    seriesVersion: 2,
+  });
 }
