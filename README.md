@@ -2,19 +2,28 @@
 
 A production-ready, backend-free Angular application that recommends modern Azure VM replacements by comparing authoritative regional SKU capabilities and public Azure retail prices.
 
-The matcher never infers hardware from SKU-name letters. Temporary storage, usable vCPU, architecture, Premium IO, accelerated networking, RDMA, and disk limits all come from `az vm list-skus`.
+Recommendations are compatibility-first and cost-second: price is only compared after every hard
+compatibility rule has passed. The matcher never infers hardware from SKU-name letters. Temporary
+storage, usable vCPU, architecture, Premium IO, accelerated networking, RDMA, and disk limits come
+from `az vm list-skus`, and CPU vendor/architecture/model plus the workload profile come from
+curated per-family metadata that overrides name parsing (for example `Lsv2` is AMD even though its
+name has no `a`).
 
 ## Features
 
 - Regional, case-insensitive lookup for pasted VM lists
 - Linux and Windows PAYG recommendations in USD, EUR, or GBP
-- Hard compatibility filters for usable vCPU, GPU count, memory, architecture, Premium IO, accelerated networking, and RDMA
-- Constrained-vCPU candidates only for constrained sources, OS-specific local temp-disk resize rules, and surfaced data-disk-limit risks
-- Correct constrained-vCPU handling
-- Same-vendor, prefer-same-vendor, and any-compatible CPU policies
-- Ranked recommendation plus three alternatives, explanation, confidence, and rejection statistics
+- Ordered candidate selection: hardware compatibility, workload profile, regional availability, lifecycle, performance equivalence, then price
+- CPU vendor and architecture are hard constraints; Intel↔AMD and x64↔Arm64 changes are only ever offered as a separate "Alternative architecture" option
+- Workload family is preserved; cross-family targets are surfaced for manual review only
+- B-series is never proposed for a non-burstable source without utilization telemetry
+- Never downsizes vCPU or memory, never recommends an older generation, and never proposes a retiring size
+- Local/temp disk, local NVMe, storage-bandwidth, network and accelerator capabilities must be preserved; a cheaper size without the temp disk is only shown as a conditional saving
+- GPU sources stay in the accelerator domain and are never replaced by CPU-only sizes
+- Result states: Recommended, Equivalent modernization, Conditional saving, Lifecycle replacement, Alternative architecture, Manual review, and No safe cheaper replacement
+- Source/destination comparison with explicit ✓/✕ compatibility badges per recommendation
 - Hourly, monthly, yearly, and monthly-saving estimates
-- Savings-based result groups and mandatory upgrades for retired VM families with official EOL dates
+- Lifecycle metadata (current, previous generation, retirement announced, retired) with official EOL dates and migration guidance
 - Excel-friendly CSV, clipboard export, and an exhaustive quality-check matrix
 - Responsive light/dark UI with no browser calls to Azure
 
@@ -51,7 +60,7 @@ The generator:
 4. Uses active, primary, hourly Consumption meters matched by `armSkuName`.
 5. Logs ambiguous active meters and selects deterministically by newest effective date, then lowest price, then meter ID.
 6. Normalizes reservation full-term prices to effective hourly prices using 8,760 hours/year.
-7. Merges curated CPU metadata from `src/assets/data/cpu-families.json`.
+7. Merges curated CPU metadata (vendor, architecture, model, platform generation) from `src/assets/data/cpu-families.json`.
 8. Atomically writes compact UTF-8 JSON without a BOM.
 
 Missing capabilities and prices remain `null`; they are never guessed. Azure-reported SKU restrictions
@@ -70,7 +79,7 @@ npm start
 
 Open `http://localhost:4200`.
 
-`npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux-family.csv`. It contains one representative VM per UK South family for Linux and all three CPU policies, using the exact same matcher as the application.
+`npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux-family.csv`. It contains one representative VM per UK South family for Linux, including the resulting recommendation state and source lifecycle status, using the exact same engine as the application.
 
 ## Static hosting
 
@@ -98,7 +107,13 @@ src/assets/data/
       <region>.json
 ```
 
-`cpu-families.json` is curated CPU metadata. `retirements.json` contains family identifiers and exact
+`cpu-families.json` is curated CPU metadata (`vendor`, `architecture`, `model`, `generation`) keyed by
+the Azure resource SKU family identifier. `workload-families.json` is the curated workload profile
+(`workloadFamily`, `seriesVersion`, burstable, local temp disk, local NVMe, storage-bandwidth,
+network optimized, isolated, confidential, HPC and accelerator details). Both are authoritative and
+override anything that could be guessed from a SKU name; the local temp disk flag also compensates
+for Azure reporting `MaxResourceVolumeMB = 0` on newer sizes. `retirements.json` contains family
+identifiers and exact
 SKU exceptions verified against Azure SKU metadata and official
 [Azure VM size lifecycle documentation](https://learn.microsoft.com/azure/virtual-machines/sizes/lifecycle/retired-sizes-list).
 Azure-reported architecture takes precedence over curated architecture. Unknown CPU families stay

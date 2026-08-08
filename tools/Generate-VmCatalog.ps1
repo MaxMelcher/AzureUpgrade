@@ -276,6 +276,8 @@ function Convert-Sku {
         architecture = $architecture
         hyperVGenerations = if ($hyperV) { @($hyperV -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }) } else { @() }
         cpuVendor = if ($null -ne $cpu) { [string] $cpu.vendor } else { $null }
+        cpuArchitecture = if ($null -ne $cpu) { [string] $cpu.architecture } else { $null }
+        cpuModel = if ($null -ne $cpu) { [string] $cpu.model } else { $null }
         cpuGeneration = if ($null -ne $cpu -and $null -ne $cpu.generation) { [int] $cpu.generation } else { $null }
         zones = $zones
         restrictions = $restrictions
