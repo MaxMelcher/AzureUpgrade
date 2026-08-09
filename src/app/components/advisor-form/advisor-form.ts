@@ -6,7 +6,6 @@ export interface AdvisorRequest {
   region: string;
   os: OperatingSystem;
   currency: CurrencyCode;
-  requireUpgradeForEol: boolean;
   skus: string[];
 }
 
@@ -26,12 +25,7 @@ export class AdvisorFormComponent {
   protected region = '';
   protected os: OperatingSystem = 'linux';
   protected currency: CurrencyCode = 'GBP';
-  protected requireUpgradeForEol = false;
-  protected skuInput = [
-    'Standard_D2as_v5',
-    'Standard_B2ats_v2',
-    'Standard_A1_v2',
-  ].join('\n');
+  protected skuInput = ['Standard_D2as_v5', 'Standard_B2ats_v2', 'Standard_A1_v2'].join('\n');
   protected readonly validationError = signal('');
 
   public constructor() {
@@ -77,7 +71,6 @@ export class AdvisorFormComponent {
       region: this.region,
       os: this.os,
       currency: this.currency,
-      requireUpgradeForEol: this.requireUpgradeForEol,
       skus,
     });
   }

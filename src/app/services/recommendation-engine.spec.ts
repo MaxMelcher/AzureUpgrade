@@ -46,8 +46,9 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, amdCandidate]);
 
-    expect(result.recommendation).toBeNull();
-    expect(result.status).toBe('no-safe-cheaper-replacement');
+    expect(result.recommendation?.vm.name).toBe(source.name);
+    expect(result.status).toBe('keep');
+    expect(result.recommendationType).toBe('KEEP');
     expect(result.alternativeArchitecture.map((entry) => entry.vm.name)).toEqual([
       'Standard_D2as_v7',
     ]);
@@ -79,7 +80,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, amdCandidate]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
   });
 
   it('rejects AMD sources being modernized onto Intel and vice versa (D2d_v4 → D2a_v4)', () => {
@@ -104,7 +105,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, amdCandidate]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
   });
 
   it('never replaces a GPU source with a CPU-only size (NG8ads_V620_v1 → D8als_v6)', () => {
@@ -132,7 +133,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, cpuOnly]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.accelerator).toBe(1);
   });
 
@@ -161,11 +162,11 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, burstable]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.burstableClass).toBe(1);
   });
 
-  it('marks losing the local temp disk as a conditional saving (D2ads_v7 → D2as_v7)', () => {
+  it('rejects losing the local temp disk (D2ads_v7 → D2as_v7)', () => {
     const source = vm({
       ...amd,
       name: 'Standard_D2ads_v7',
@@ -189,12 +190,9 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, withoutTempDisk]);
 
-    expect(result.status).toBe('conditional-saving');
-    expect(result.recommendation?.vm.name).toBe('Standard_D2as_v7');
-    expect(result.recommendation?.notes).toContain('Cheaper if local/temp disk is not required');
-    expect(result.recommendation?.checks.find((check) => check.id === 'storage')?.passed).toBe(
-      false,
-    );
+    expect(result.status).toBe('keep');
+    expect(result.recommendation?.vm.name).toBe(source.name);
+    expect(result.rejected.localStorage).toBe(1);
   });
 
   it('recommends a same-architecture newer generation (E2ps_v5 → E2ps_v6)', () => {
@@ -228,10 +226,11 @@ describe('RecommendationEngine compatibility rules', () => {
 
     expect(result.status).toBe('recommended');
     expect(result.recommendation?.vm.name).toBe('Standard_E2ps_v6');
+    expect(result.recommendationType).toBe('COST_OPTIMIZATION');
     expect(result.recommendation?.checks.every((check) => check.passed)).toBe(true);
   });
 
-  it('never recommends an older generation even when it is cheaper (D2ads_v5 → D2ds_v4)', () => {
+  it('recommends a supported older generation when it is compatible and cheaper', () => {
     const source = vm({
       ...amd,
       name: 'Standard_D2ads_v5',
@@ -253,8 +252,8 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, older]);
 
-    expect(result.recommendation).toBeNull();
-    expect(result.rejected.olderGeneration).toBe(1);
+    expect(result.recommendation?.vm.name).toBe('Standard_D2ds_v4');
+    expect(result.recommendationType).toBe('COST_OPTIMIZATION');
   });
 
   it('keeps the workload family and flags cross-family candidates for manual review', () => {
@@ -283,7 +282,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, otherFamily]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.manualReview.map((entry) => entry.vm.name)).toEqual(['Standard_D4s_v6']);
   });
 
@@ -303,7 +302,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, smaller]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.usableVcpus + result.rejected.memory).toBeGreaterThan(0);
   });
 
@@ -337,6 +336,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     expect(result.mandatoryUpgrade).toBe(true);
     expect(result.status).toBe('lifecycle-replacement');
+    expect(result.recommendationType).toBe('RETIREMENT_MIGRATION');
     expect(result.recommendation?.vm.name).toBe('Standard_D4s_v6');
   });
 
@@ -369,6 +369,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     expect(result.status).toBe('manual-migration-required');
     expect(result.recommendation).toBeNull();
+    expect(result.recommendationType).toBe('MANUAL_REVIEW');
   });
 
   it('never proposes a candidate that is itself retiring', () => {
@@ -390,7 +391,7 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, retiring]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.retirement).toBe(1);
   });
 
@@ -411,11 +412,11 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, restricted]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.subscriptionRestriction).toBe(1);
   });
 
-  it('classifies a compatible newer generation within ±5% as equivalent modernization', () => {
+  it('keeps a supported source when a newer generation saves less than 5%', () => {
     const source = vm({
       ...intel,
       name: 'Standard_D4s_v5',
@@ -439,8 +440,9 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, newer]);
 
-    expect(result.status).toBe('equivalent-modernization');
-    expect(result.recommendation?.vm.name).toBe('Standard_D4s_v6');
+    expect(result.status).toBe('keep');
+    expect(result.recommendation?.vm.name).toBe(source.name);
+    expect(result.recommendationType).toBe('KEEP');
   });
 
   it('preserves local NVMe storage for storage optimized sources', () => {
@@ -476,8 +478,8 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, withoutNvme]);
 
-    expect(result.recommendation).toBeNull();
-    expect(result.manualReview[0]?.vm.name).toBe('Standard_E8as_v6');
+    expect(result.recommendation?.vm.name).toBe(source.name);
+    expect(result.rejected.localStorage).toBe(1);
   });
 
   it('keeps constrained-vCPU behaviour', () => {
@@ -512,8 +514,78 @@ describe('RecommendationEngine compatibility rules', () => {
 
     const result = run(source, [source, unconstrained]);
 
-    expect(result.recommendation).toBeNull();
+    expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.constrainedShape).toBe(1);
+  });
+
+  it('requires migration for an announced EOL even when the successor costs more', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_D4s_v5',
+      family: 'standardDSv5Family',
+      seriesVersion: 5,
+      cpuGeneration: 4,
+      lifecycleStatus: 'retirementAnnounced',
+      retirement: {
+        eolDate: '2027-01-01',
+        description: 'Retirement announced',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.1),
+    });
+    const successor = vm({
+      ...intel,
+      name: 'Standard_D4s_v6',
+      family: 'StandardDsv6Family',
+      seriesVersion: 6,
+      cpuGeneration: 5,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.12),
+    });
+
+    const result = run(source, [source, successor]);
+
+    expect(result.mandatoryUpgrade).toBe(true);
+    expect(result.recommendation?.vm.name).toBe(successor.name);
+    expect(result.recommendationType).toBe('RETIREMENT_MIGRATION');
+    expect(result.recommendation?.savingPercent).toBeCloseTo(-20);
+  });
+
+  it('uses generation only to break a capability and price tie', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_D4s_v4',
+      seriesVersion: 4,
+      cpuGeneration: 3,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.2),
+    });
+    const older = vm({
+      ...intel,
+      name: 'Standard_D4s_v3',
+      seriesVersion: 3,
+      cpuGeneration: 2,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.1),
+    });
+    const newer = vm({
+      ...intel,
+      name: 'Standard_D4s_v6',
+      seriesVersion: 6,
+      cpuGeneration: 5,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.1),
+    });
+
+    const result = run(source, [source, older, newer]);
+
+    expect(result.recommendation?.vm.name).toBe(newer.name);
   });
 
   it('produces a quality matrix row per size with the recommendation state', () => {

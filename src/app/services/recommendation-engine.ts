@@ -6,6 +6,7 @@ import {
   QualityMatrixRow,
   RecommendationResult,
   RecommendationState,
+  RecommendationType,
   RejectedCandidateStatistics,
   RegionalCatalog,
   VmSku,
@@ -15,8 +16,7 @@ import { isRetired, migrationGuideUrl } from './retirement-metadata';
 /** Price difference, in percent, that separates a real saving from an equivalent modernization. */
 const MATERIAL_SAVING_PERCENT = 5;
 
-type CandidateCategory =
-  'compatible' | 'conditional' | 'alternative-architecture' | 'manual-review';
+type CandidateCategory = 'compatible' | 'alternative-architecture' | 'manual-review';
 
 type RejectionReason = keyof Omit<RejectedCandidateStatistics, 'totalCandidates'>;
 
@@ -52,7 +52,6 @@ export class RecommendationEngine {
     sourceSku: string,
     region: string,
     os: OperatingSystem,
-    requireUpgradeForEol = false,
   ): RecommendationResult {
     const source = this.skuLookup.get(sourceSku.trim().toLowerCase()) ?? null;
     const rejected = this.emptyStatistics();
@@ -70,8 +69,7 @@ export class RecommendationEngine {
     }
 
     const mandatoryUpgrade =
-      source.lifecycleStatus === 'retired' ||
-      (requireUpgradeForEol && source.lifecycleStatus === 'retirementAnnounced');
+      source.lifecycleStatus === 'retired' || source.lifecycleStatus === 'retirementAnnounced';
     const sourceMissing = this.missingCriticalCapabilities(source);
     if (sourceMissing.length > 0) {
       return {
@@ -107,7 +105,7 @@ export class RecommendationEngine {
           sourcePrice !== null && sourcePrice > 0
             ? ((sourcePrice - hourlyPrice) / sourcePrice) * 100
             : null,
-        ...this.evaluate(source, candidate, os),
+        ...this.evaluate(source, candidate),
       });
     }
 
@@ -115,12 +113,17 @@ export class RecommendationEngine {
       evaluated.filter((candidate) => candidate.category === category).sort(this.byPrice(source));
 
     const compatible = byCategory('compatible');
-    const conditional = byCategory('conditional');
     const alternativeArchitecture = byCategory('alternative-architecture');
     const manualReview = byCategory('manual-review');
 
-    const selection = this.select(source, mandatoryUpgrade, compatible, conditional);
-    const primary = selection ? this.toCandidate(selection.candidate, selection.state) : null;
+    const selection = this.select(source, mandatoryUpgrade, compatible);
+    const primary = selection
+      ? this.toCandidate(selection.candidate, selection.state, selection.recommendationType, source)
+      : mandatoryUpgrade
+        ? null
+        : this.keepCandidate(source, os);
+    const recommendationType: RecommendationType =
+      primary?.recommendationType ?? (mandatoryUpgrade ? 'MANUAL_REVIEW' : 'KEEP');
 
     return {
       inputSku: sourceSku,
@@ -132,21 +135,22 @@ export class RecommendationEngine {
       region,
       os,
       source,
+      recommendationType,
+      sourceHourlyPrice: sourcePrice,
       recommendation: primary,
       alternatives: compatible
         .filter((candidate) => candidate.vm.name !== primary?.vm.name)
         .slice(0, 3)
-        .map((candidate) => this.toCandidate(candidate, 'equivalent-modernization')),
-      conditional: conditional
-        .filter((candidate) => candidate.vm.name !== primary?.vm.name)
-        .slice(0, 3)
-        .map((candidate) => this.toCandidate(candidate, 'conditional-saving')),
+        .map((candidate) => this.toCandidate(candidate, 'manual-review', 'MANUAL_REVIEW', source)),
+      conditional: [],
       alternativeArchitecture: alternativeArchitecture
         .slice(0, 3)
-        .map((candidate) => this.toCandidate(candidate, 'alternative-architecture')),
+        .map((candidate) =>
+          this.toCandidate(candidate, 'alternative-architecture', 'MANUAL_REVIEW', source),
+        ),
       manualReview: manualReview
         .slice(0, 3)
-        .map((candidate) => this.toCandidate(candidate, 'manual-review')),
+        .map((candidate) => this.toCandidate(candidate, 'manual-review', 'MANUAL_REVIEW', source)),
       rejected,
       explanation: this.explain(source, primary, mandatoryUpgrade, {
         alternativeArchitecture: alternativeArchitecture.length,
@@ -170,6 +174,7 @@ export class RecommendationEngine {
           sourceSku: sku.name,
           os,
           status: result.status,
+          recommendationType: result.recommendationType,
           recommendation: result.recommendation?.vm.name ?? '',
           recommendationState: result.recommendation?.state ?? '',
           sourceHourly: this.priceFor(sku, os),
@@ -195,40 +200,37 @@ export class RecommendationEngine {
     source: VmSku,
     mandatoryUpgrade: boolean,
     compatible: EvaluatedCandidate[],
-    conditional: EvaluatedCandidate[],
-  ): { candidate: EvaluatedCandidate; state: RecommendationState } | null {
-    const cheapest = compatible[0] ?? null;
+  ): {
+    candidate: EvaluatedCandidate;
+    state: RecommendationState;
+    recommendationType: RecommendationType;
+  } | null {
     const materiallyCheaper = (candidate: EvaluatedCandidate | null): boolean =>
       candidate !== null &&
       candidate.savingPercent !== null &&
       candidate.savingPercent >= MATERIAL_SAVING_PERCENT;
 
     if (mandatoryUpgrade) {
-      const replacement = cheapest ?? conditional[0] ?? null;
+      const replacement = this.closestSizedCandidates(source, compatible)[0] ?? null;
       if (!replacement) return null;
       return {
         candidate: replacement,
-        state: materiallyCheaper(replacement) ? 'recommended' : 'lifecycle-replacement',
+        state: 'lifecycle-replacement',
+        recommendationType: 'RETIREMENT_MIGRATION',
       };
     }
 
-    if (materiallyCheaper(cheapest)) {
-      return { candidate: cheapest!, state: 'recommended' };
-    }
-
-    const modernization = compatible.find(
-      (candidate) =>
-        this.isNewerGeneration(source, candidate.vm) &&
-        candidate.savingPercent !== null &&
-        Math.abs(candidate.savingPercent) <= MATERIAL_SAVING_PERCENT,
+    const cheaperCandidates = this.closestSizedCandidates(
+      source,
+      compatible.filter((candidate) => materiallyCheaper(candidate)),
     );
-    if (modernization) {
-      return { candidate: modernization, state: 'equivalent-modernization' };
-    }
-
-    const conditionalSaving = conditional.find((candidate) => materiallyCheaper(candidate));
-    if (conditionalSaving) {
-      return { candidate: conditionalSaving, state: 'conditional-saving' };
+    const cheapest = cheaperCandidates[0] ?? null;
+    if (cheapest) {
+      return {
+        candidate: cheapest,
+        state: 'recommended',
+        recommendationType: 'COST_OPTIMIZATION',
+      };
     }
 
     return null;
@@ -250,24 +252,40 @@ export class RecommendationEngine {
     if (this.priceFor(candidate, os) === null) return 'price';
     if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
     if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
-    if (this.isConstrained(source) !== this.isConstrained(candidate)) return 'constrainedShape';
+    if (
+      this.isConstrained(source) !== this.isConstrained(candidate) ||
+      (this.isConstrained(source) &&
+        (source.vcpus !== candidate.vcpus || source.vcpusAvailable !== candidate.vcpusAvailable))
+    )
+      return 'constrainedShape';
     if (!source.profile.burstable && candidate.profile.burstable) return 'burstableClass';
     if (this.hasAccelerator(source) && !this.hasAccelerator(candidate)) return 'accelerator';
     if (this.hasAccelerator(source) && !this.atLeast(candidate.gpus, source.gpus))
       return 'accelerator';
-    if (this.isOlderGeneration(source, candidate)) return 'olderGeneration';
-    if (os === 'windows' && source.profile.localTempDisk !== candidate.profile.localTempDisk)
+    if (
+      source.profile.localTempDisk !== candidate.profile.localTempDisk ||
+      !this.atLeast(candidate.tempDiskMB, source.tempDiskMB) ||
+      (source.profile.localNvme && !candidate.profile.localNvme) ||
+      (source.profile.storageBandwidthOptimized && !candidate.profile.storageBandwidthOptimized) ||
+      !this.atLeast(candidate.maxDataDisks, source.maxDataDisks)
+    )
       return 'localStorage';
     if (source.premiumIO === true && candidate.premiumIO !== true) return 'premiumIO';
+    if (
+      (source.profile.networkOptimized && !candidate.profile.networkOptimized) ||
+      (source.acceleratedNetworking === true && candidate.acceleratedNetworking !== true) ||
+      (source.rdma === true && candidate.rdma !== true) ||
+      !this.atLeast(candidate.maxNICs, source.maxNICs)
+    )
+      return 'network';
     return null;
   }
 
   /** Classifies a surviving candidate and produces the comparison badges shown in the UI. */
-  private evaluate(source: VmSku, candidate: VmSku, os: OperatingSystem): Evaluation {
+  private evaluate(source: VmSku, candidate: VmSku): Evaluation {
     const checks: CompatibilityCheck[] = [];
     const notes: string[] = [];
     const manual: string[] = [];
-    const conditionalNotes: string[] = [];
 
     const sameVendor = this.isSameCpuVendor(source, candidate);
     const sameArchitecture =
@@ -342,18 +360,8 @@ export class RecommendationEngine {
     );
     if (!nvmeKept) manual.push('local NVMe storage is dropped');
     if (!storageBandwidthKept) manual.push('storage-bandwidth optimization is dropped');
-    if (!localStorageKept) {
-      conditionalNotes.push(
-        !candidate.profile.localTempDisk
-          ? 'Cheaper if local/temp disk is not required'
-          : `Cheaper if ${this.gib(source.tempDiskMB)} of local/temp disk is not required`,
-      );
-    }
-    if (!dataDisksKept) {
-      conditionalNotes.push(
-        `Confirm ${candidate.maxDataDisks} data disks are enough (source supports ${source.maxDataDisks})`,
-      );
-    }
+    if (!localStorageKept) manual.push('local/temp disk capacity is reduced');
+    if (!dataDisksKept) manual.push('the data disk limit is reduced');
 
     const networkOptimizationKept =
       !source.profile.networkOptimized || candidate.profile.networkOptimized;
@@ -386,30 +394,19 @@ export class RecommendationEngine {
     );
     if (!acceleratorPassed) manual.push('the accelerator model or class changes');
 
-    const generationPassed = this.isSameOrNewerGeneration(source, candidate);
     checks.push(
       this.check(
         'generation',
-        this.isNewerGeneration(source, candidate) ? 'Newer generation' : 'Same or newer generation',
-        generationPassed,
+        'Generation (tie-breaker only)',
+        true,
         `${this.generationLabel(source)} → ${this.generationLabel(candidate)}`,
       ),
       this.check('region', 'Available in region', true, this.catalog.displayName),
     );
-    if (!generationPassed) manual.push('the target generation is not newer');
 
     const hyperVKept =
       !source.hyperVGenerations.includes('V1') || candidate.hyperVGenerations.includes('V1');
     if (!hyperVKept) manual.push('Generation 1 images are not supported by the target');
-
-    if (
-      os === 'linux' &&
-      !localStorageKept &&
-      !candidate.profile.localTempDisk &&
-      manual.length === 0
-    ) {
-      notes.push('Linux supports resizing to a size without local temporary storage');
-    }
 
     let category: CandidateCategory = 'compatible';
     if (manual.length > 0) {
@@ -420,10 +417,7 @@ export class RecommendationEngine {
       notes.push(
         'Alternative architecture: a processor vendor or architecture change must be validated and is never selected automatically.',
       );
-    } else if (conditionalNotes.length > 0) {
-      category = 'conditional';
     }
-    notes.push(...conditionalNotes);
 
     return { category, checks, notes };
   }
@@ -431,16 +425,87 @@ export class RecommendationEngine {
   private toCandidate(
     candidate: EvaluatedCandidate,
     state: RecommendationState,
+    recommendationType: RecommendationType,
+    source: VmSku,
   ): CandidateRecommendation {
+    const capabilityChanges = this.capabilityChanges(source, candidate.vm);
     return {
       vm: candidate.vm,
       state,
+      recommendationType,
       hourlyPrice: candidate.hourlyPrice,
+      hourlySaving: candidate.monthlySaving === null ? null : candidate.monthlySaving / 730,
       monthlySaving: candidate.monthlySaving,
       savingPercent: candidate.savingPercent,
+      cpuVendorChange: !this.isSameCpuVendor(source, candidate.vm),
+      resourceDifference: {
+        usableVcpus: (candidate.vm.vcpusAvailable ?? 0) - (source.vcpusAvailable ?? 0),
+        memoryGB: (candidate.vm.memoryGB ?? 0) - (source.memoryGB ?? 0),
+      },
+      ...capabilityChanges,
       checks: candidate.checks,
       notes: candidate.notes,
     };
+  }
+
+  private keepCandidate(source: VmSku, os: OperatingSystem): CandidateRecommendation {
+    return {
+      vm: source,
+      state: 'keep',
+      recommendationType: 'KEEP',
+      hourlyPrice: this.priceFor(source, os),
+      hourlySaving: 0,
+      monthlySaving: 0,
+      savingPercent: 0,
+      cpuVendorChange: false,
+      resourceDifference: { usableVcpus: 0, memoryGB: 0 },
+      lostCapabilities: [],
+      gainedCapabilities: [],
+      checks: this.evaluate(source, source).checks,
+      notes: [],
+    };
+  }
+
+  private capabilityChanges(
+    source: VmSku,
+    candidate: VmSku,
+  ): Pick<CandidateRecommendation, 'lostCapabilities' | 'gainedCapabilities'> {
+    const lostCapabilities: string[] = [];
+    const gainedCapabilities: string[] = [];
+    const compare = (label: string, sourceHas: boolean, candidateHas: boolean): void => {
+      if (sourceHas && !candidateHas) lostCapabilities.push(label);
+      if (!sourceHas && candidateHas) gainedCapabilities.push(label);
+    };
+    compare('local/temp disk', source.profile.localTempDisk, candidate.profile.localTempDisk);
+    compare('local NVMe', source.profile.localNvme, candidate.profile.localNvme);
+    compare('Premium SSD', source.premiumIO === true, candidate.premiumIO === true);
+    compare(
+      'accelerated networking',
+      source.acceleratedNetworking === true,
+      candidate.acceleratedNetworking === true,
+    );
+    compare('RDMA/InfiniBand', source.rdma === true, candidate.rdma === true);
+    compare('confidential computing', source.profile.confidential, candidate.profile.confidential);
+    compare('HPC profile', source.profile.hpc, candidate.profile.hpc);
+    compare('accelerator', this.hasAccelerator(source), this.hasAccelerator(candidate));
+    return { lostCapabilities, gainedCapabilities };
+  }
+
+  private closestSizedCandidates(
+    source: VmSku,
+    candidates: EvaluatedCandidate[],
+  ): EvaluatedCandidate[] {
+    const exact = candidates.filter(
+      (candidate) =>
+        candidate.vm.vcpusAvailable === source.vcpusAvailable &&
+        candidate.vm.memoryGB === source.memoryGB,
+    );
+    if (exact.length > 0) return exact;
+
+    const sameCpu = candidates.filter(
+      (candidate) => candidate.vm.vcpusAvailable === source.vcpusAvailable,
+    );
+    return sameCpu.length > 0 ? sameCpu : candidates;
   }
 
   /** Cheapest first, then closest to the source shape, then the newest series. */
@@ -464,7 +529,15 @@ export class RecommendationEngine {
     mandatoryUpgrade: boolean,
     remaining: { alternativeArchitecture: number; manualReview: number },
   ): string {
-    const lifecycle = this.lifecycleSentence(source, mandatoryUpgrade);
+    const lifecycle = this.lifecycleSentence(source);
+    if (recommendation?.recommendationType === 'KEEP') {
+      return [
+        lifecycle,
+        'Keep the current VM: it is supported and no fully compatible alternative is at least 5% cheaper.',
+      ]
+        .filter(Boolean)
+        .join(' ');
+    }
     if (!recommendation) {
       const options: string[] = [];
       if (remaining.alternativeArchitecture > 0) {
@@ -514,27 +587,21 @@ export class RecommendationEngine {
     const state =
       recommendation.state === 'lifecycle-replacement'
         ? 'Lifecycle replacement – not a cost saving.'
-        : recommendation.state === 'conditional-saving'
-          ? 'Conditional saving – confirm the listed optional capability is unused.'
-          : recommendation.state === 'equivalent-modernization'
-            ? 'Equivalent modernization.'
-            : 'Recommended.';
+        : 'Cost optimization.';
 
     return [lifecycle, state, `${this.sentenceList(reasons)}.`, ...recommendation.notes]
       .filter(Boolean)
       .join(' ');
   }
 
-  private lifecycleSentence(source: VmSku, mandatoryUpgrade: boolean): string {
+  private lifecycleSentence(source: VmSku): string {
     if (!source.retirement) return '';
     const guide = migrationGuideUrl(source.retirement);
     const suffix = guide ? ` Microsoft migration guidance: ${guide}.` : '';
     if (isRetired(source.retirement)) {
       return `This VM retired on ${source.retirement.eolDate}; upgrading is required.${suffix}`;
     }
-    return mandatoryUpgrade
-      ? `This VM has an announced EOL of ${source.retirement.eolDate}; the selected policy makes upgrading required.${suffix}`
-      : `This VM has an announced EOL of ${source.retirement.eolDate}; migration can be planned before that date.${suffix}`;
+    return `This VM has an announced EOL of ${source.retirement.eolDate}; migration is required before that date.${suffix}`;
   }
 
   private qualityRepresentativeSkus(): VmSku[] {
@@ -624,10 +691,6 @@ export class RecommendationEngine {
       candidate.cpuGeneration !== null &&
       candidate.cpuGeneration < source.cpuGeneration
     );
-  }
-
-  private isSameOrNewerGeneration(source: VmSku, candidate: VmSku): boolean {
-    return !this.isOlderGeneration(source, candidate);
   }
 
   private isNewerGeneration(source: VmSku, candidate: VmSku): boolean {
@@ -741,9 +804,9 @@ export class RecommendationEngine {
       memory: 0,
       constrainedShape: 0,
       burstableClass: 0,
-      olderGeneration: 0,
       localStorage: 0,
       premiumIO: 0,
+      network: 0,
       accelerator: 0,
     };
   }
@@ -762,6 +825,8 @@ export class RecommendationEngine {
       region,
       os,
       source: null,
+      recommendationType: 'MANUAL_REVIEW',
+      sourceHourlyPrice: null,
       recommendation: null,
       alternatives: [],
       conditional: [],
