@@ -60,23 +60,17 @@ export class ResultsListComponent {
         ),
       },
       {
-        key: 'recommended',
-        title: 'Recommended',
+        key: 'cost',
+        title: 'Cost optimizations',
         description: 'Fully compatible replacements that are at least 5% cheaper.',
         results: inState('recommended').filter((result) => !result.mandatoryUpgrade),
       },
       {
-        key: 'modernization',
-        title: 'Equivalent modernization',
-        description: 'Fully compatible newer generations priced within 5% of the current VM size.',
-        results: inState('equivalent-modernization').filter((result) => !result.mandatoryUpgrade),
-      },
-      {
-        key: 'conditional',
-        title: 'Conditional savings',
+        key: 'keep',
+        title: 'Keep current size',
         description:
-          'Cheaper only if an optional capability such as the local temp disk is confirmed unused.',
-        results: inState('conditional-saving').filter((result) => !result.mandatoryUpgrade),
+          'Supported VM sizes with no fully compatible alternative offering material savings.',
+        results: inState('keep'),
       },
       {
         key: 'review',
@@ -130,11 +124,6 @@ export class ResultsListComponent {
     return [
       { key: 'alternatives', title: 'Alternative candidates', candidates: result.alternatives },
       {
-        key: 'conditional',
-        title: 'Conditional – cheaper if the optional capability is not required',
-        candidates: result.conditional,
-      },
-      {
         key: 'architecture',
         title: 'Alternative architecture – never selected automatically',
         candidates: result.alternativeArchitecture,
@@ -150,9 +139,8 @@ export class ResultsListComponent {
   protected stateLabel(result: RecommendationResult): string {
     return (
       {
+        keep: 'Keep',
         recommended: 'Recommended',
-        'equivalent-modernization': 'Equivalent modernization',
-        'conditional-saving': 'Conditional saving',
         'lifecycle-replacement': 'Lifecycle replacement – not a cost saving',
         'alternative-architecture': 'Alternative architecture',
         'manual-review': 'Manual review',

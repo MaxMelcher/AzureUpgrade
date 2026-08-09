@@ -130,19 +130,17 @@ export interface RejectedCandidateStatistics {
   memory: number;
   constrainedShape: number;
   burstableClass: number;
-  olderGeneration: number;
   localStorage: number;
   premiumIO: number;
+  network: number;
   accelerator: number;
 }
 
 export type RecommendationState =
-  | 'recommended'
-  | 'equivalent-modernization'
-  | 'conditional-saving'
-  | 'lifecycle-replacement'
-  | 'alternative-architecture'
-  | 'manual-review';
+  'keep' | 'recommended' | 'lifecycle-replacement' | 'alternative-architecture' | 'manual-review';
+
+export type RecommendationType =
+  'KEEP' | 'COST_OPTIMIZATION' | 'RETIREMENT_MIGRATION' | 'PERFORMANCE_UPGRADE' | 'MANUAL_REVIEW';
 
 export type RecommendationStatus =
   | RecommendationState
@@ -173,9 +171,18 @@ export interface CompatibilityCheck {
 export interface CandidateRecommendation {
   vm: VmSku;
   state: RecommendationState;
-  hourlyPrice: number;
+  recommendationType: RecommendationType;
+  hourlyPrice: number | null;
+  hourlySaving: number | null;
   monthlySaving: number | null;
   savingPercent: number | null;
+  cpuVendorChange: boolean;
+  resourceDifference: {
+    usableVcpus: number;
+    memoryGB: number;
+  };
+  lostCapabilities: string[];
+  gainedCapabilities: string[];
   checks: CompatibilityCheck[];
   notes: string[];
 }
@@ -186,6 +193,8 @@ export interface RecommendationResult {
   region: string;
   os: OperatingSystem;
   source: VmSku | null;
+  recommendationType: RecommendationType;
+  sourceHourlyPrice: number | null;
   recommendation: CandidateRecommendation | null;
   alternatives: CandidateRecommendation[];
   conditional: CandidateRecommendation[];
@@ -203,6 +212,7 @@ export interface QualityMatrixRow {
   sourceSku: string;
   os: OperatingSystem;
   status: RecommendationStatus;
+  recommendationType: RecommendationType;
   recommendation: string;
   recommendationState: string;
   sourceHourly: number | null;

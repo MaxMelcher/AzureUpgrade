@@ -126,11 +126,8 @@
                 <div class="summary-cell price">
                   <small>New hourly</small>
                   <strong>
-                    @if (result.recommendation) {
-                      {{
-                        result.recommendation.hourlyPrice
-                          | currency: currencyCode() : 'symbol' : '1.4-4'
-                      }}
+                    @if (result.recommendation?.hourlyPrice; as recommendedHourly) {
+                      {{ recommendedHourly | currency: currencyCode() : 'symbol' : '1.4-4' }}
                     } @else {
                       —
                     }
@@ -281,9 +278,15 @@
                             Unavailable
                           }
                         </b>
-                        <b>{{
-                          candidate.hourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4'
-                        }}</b>
+                        <b>
+                          @if (candidate.hourlyPrice !== null) {
+                            {{
+                              candidate.hourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4'
+                            }}
+                          } @else {
+                            Unavailable
+                          }
+                        </b>
                       </div>
                       <div>
                         <span>Monthly · 730 hours</span>
@@ -294,7 +297,13 @@
                             Unavailable
                           }
                         </b>
-                        <b>{{ candidate.hourlyPrice * 730 | currency: currencyCode() }}</b>
+                        <b>
+                          @if (candidate.hourlyPrice !== null) {
+                            {{ candidate.hourlyPrice * 730 | currency: currencyCode() }}
+                          } @else {
+                            Unavailable
+                          }
+                        </b>
                       </div>
                       <div>
                         <span>Yearly · 8,760 hours</span>
@@ -305,7 +314,13 @@
                             Unavailable
                           }
                         </b>
-                        <b>{{ candidate.hourlyPrice * 8760 | currency: currencyCode() }}</b>
+                        <b>
+                          @if (candidate.hourlyPrice !== null) {
+                            {{ candidate.hourlyPrice * 8760 | currency: currencyCode() }}
+                          } @else {
+                            Unavailable
+                          }
+                        </b>
                       </div>
                       <div class="saving-row">
                         <span>Estimated monthly saving</span>
@@ -332,11 +347,15 @@
                         @for (alternative of list.candidates; track alternative.vm.name) {
                           <span
                             >{{ alternative.vm.name }} ·
-                            {{
-                              alternative.hourlyPrice
-                                | currency: currencyCode() : 'symbol' : '1.4-4'
-                            }}/hr</span
-                          >
+                            @if (alternative.hourlyPrice !== null) {
+                              {{
+                                alternative.hourlyPrice
+                                  | currency: currencyCode() : 'symbol' : '1.4-4'
+                              }}/hr
+                            } @else {
+                              price unavailable
+                            }
+                          </span>
                         }
                       </div>
                     }
