@@ -8,30 +8,101 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'All')]
     [switch] $AllRegions,
 
+    [Parameter(ParameterSetName = 'All')]
+    [ValidateRange(0, 63)]
+    [int] $ShardIndex = 0,
+
+    [Parameter(ParameterSetName = 'All')]
+    [ValidateRange(1, 64)]
+    [int] $ShardCount = 1,
+
     [ValidateSet('USD', 'EUR', 'GBP')]
     [string[]] $CurrencyCode = @('USD', 'EUR', 'GBP'),
 
-    [string] $OutputPath = (Join-Path $PSScriptRoot '..\src\assets\data')
+    [string] $OutputPath = (Join-Path $PSScriptRoot '..\src\assets\data'),
+
+    [string] $CpuMetadataPath = (Join-Path $OutputPath 'cpu-families.json')
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $script:RegionAmbiguities = 0
 
-function Invoke-AzJson {
-    param([Parameter(Mandatory)][string[]] $Arguments)
+# Azure CLI may need to refresh its access token during an all-region run, but the assertion cached
+# by azure/login expires after a few minutes. Request a new assertion without storing a secret.
+function Update-AzureCliGitHubOidcLogin {
+    $requiredVariables = @(
+        'ACTIONS_ID_TOKEN_REQUEST_URL'
+        'ACTIONS_ID_TOKEN_REQUEST_TOKEN'
+        'AZURE_CLIENT_ID'
+        'AZURE_TENANT_ID'
+        'AZURE_SUBSCRIPTION_ID'
+    )
+    $missingVariables = @($requiredVariables | Where-Object {
+        [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+    })
+    if ($missingVariables.Count -gt 0) {
+        throw "Azure CLI authentication expired and cannot be renewed because these environment variables are missing: $($missingVariables -join ', ')."
+    }
+
+    Write-Host '  Azure CLI token expired; requesting a fresh GitHub OIDC assertion...'
+    $audience = [uri]::EscapeDataString('api://AzureADTokenExchange')
+    $requestUri = "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$audience"
+    $response = Invoke-RestMethod -Uri $requestUri -Method Get -Headers @{
+        Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+    } -TimeoutSec 30
+    if ([string]::IsNullOrWhiteSpace([string] $response.value)) {
+        throw 'GitHub returned an empty OIDC assertion.'
+    }
 
     $errorFile = [IO.Path]::GetTempFileName()
     try {
-        $json = (& az @Arguments --only-show-errors --output json 2>$errorFile | Out-String)
+        $null = & az login `
+            --service-principal `
+            --username $env:AZURE_CLIENT_ID `
+            --tenant $env:AZURE_TENANT_ID `
+            --federated-token $response.value `
+            --only-show-errors `
+            --output none 2>$errorFile
         if ($LASTEXITCODE -ne 0) {
             $message = [IO.File]::ReadAllText($errorFile)
-            throw "Azure CLI failed: $message"
+            throw "Azure CLI OIDC renewal failed: $message"
         }
-        return $json | ConvertFrom-Json -Depth 100
+
+        $null = & az account set `
+            --subscription $env:AZURE_SUBSCRIPTION_ID `
+            --only-show-errors 2>$errorFile
+        if ($LASTEXITCODE -ne 0) {
+            $message = [IO.File]::ReadAllText($errorFile)
+            throw "Azure CLI could not restore the configured subscription: $message"
+        }
     }
     finally {
         Remove-Item -LiteralPath $errorFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-AzJson {
+    param([Parameter(Mandatory)][string[]] $Arguments)
+
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        $errorFile = [IO.Path]::GetTempFileName()
+        try {
+            $json = (& az @Arguments --only-show-errors --output json 2>$errorFile | Out-String)
+            if ($LASTEXITCODE -eq 0) {
+                return $json | ConvertFrom-Json -Depth 100
+            }
+
+            $message = [IO.File]::ReadAllText($errorFile)
+            if ($attempt -eq 1 -and $message -match 'AADSTS700024') {
+                Update-AzureCliGitHubOidcLogin
+                continue
+            }
+            throw "Azure CLI failed: $message"
+        }
+        finally {
+            Remove-Item -LiteralPath $errorFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -102,6 +173,12 @@ function Write-DeterministicJson {
     $json = ConvertTo-Json -InputObject $Value -Depth 30 -Compress
     [IO.File]::WriteAllText($temporaryPath, $json, [Text.UTF8Encoding]::new($false))
     Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
+}
+
+function Convert-ToGeneratedAtString {
+    param([Parameter(Mandatory)] $Value)
+    if ($Value -is [datetime]) { return $Value.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+    return [string] $Value
 }
 
 function Get-RetailPrices {
@@ -181,12 +258,18 @@ function New-PriceLookup {
         foreach ($os in @('linux', 'windows')) {
             $payg = @($group.Group | Where-Object {
                 $_.type -eq 'Consumption' -and
-                $_.isPrimaryMeterRegion -eq $true -and
                 $_.unitOfMeasure -eq '1 Hour' -and
                 (Get-OperatingSystem $_) -eq $os -and
                 -not (Test-IsExcludedPrice $_)
             })
-            $record["${os}PaygHourly"] = Select-DeterministicPrice -Entries $payg -Label "$($group.Name) $os PAYG"
+            $primaryPayg = @($payg | Where-Object { $_.isPrimaryMeterRegion -eq $true })
+            $paygPrice = Select-DeterministicPrice -Entries $primaryPayg -Label "$($group.Name) $os PAYG"
+            if ($null -eq $paygPrice) {
+                # Some active legacy base meters are marked non-primary while only their Spot
+                # meters are primary. Prefer primary meters, but do not discard valid PAYG prices.
+                $paygPrice = Select-DeterministicPrice -Entries $payg -Label "$($group.Name) $os PAYG fallback"
+            }
+            $record["${os}PaygHourly"] = $paygPrice
 
             foreach ($term in @('1 Year', '3 Years')) {
                 $reservation = @($group.Group | Where-Object {
@@ -303,6 +386,15 @@ $physicalLocations = @($allLocations | Where-Object {
 
 if ($AllRegions) {
     $selectedRegions = @($physicalLocations | Select-Object -ExpandProperty name | Sort-Object -Unique)
+    if ($ShardIndex -ge $ShardCount) {
+        throw "ShardIndex ($ShardIndex) must be less than ShardCount ($ShardCount)."
+    }
+    if ($ShardCount -gt 1) {
+        $selectedRegions = @(for ($regionIndex = 0; $regionIndex -lt $selectedRegions.Count; $regionIndex++) {
+            if ($regionIndex % $ShardCount -eq $ShardIndex) { $selectedRegions[$regionIndex] }
+        })
+        Write-Host "Shard $($ShardIndex + 1)/$ShardCount selected $($selectedRegions.Count) regions."
+    }
 } else {
     $selectedRegions = @($Regions | ForEach-Object { $_.Split(',') } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ } | Sort-Object -Unique)
 }
@@ -315,11 +407,10 @@ foreach ($region in $selectedRegions) {
     if (-not $knownRegions.ContainsKey($region)) { throw "Unknown Azure region '$region'." }
 }
 
-$cpuPath = Join-Path $OutputPath 'cpu-families.json'
-if (-not (Test-Path -LiteralPath $cpuPath)) {
-    throw "CPU metadata file not found: $cpuPath"
+if (-not (Test-Path -LiteralPath $CpuMetadataPath)) {
+    throw "CPU metadata file not found: $CpuMetadataPath"
 }
-$cpuRaw = Get-Content -LiteralPath $cpuPath -Raw | ConvertFrom-Json
+$cpuRaw = Get-Content -LiteralPath $CpuMetadataPath -Raw | ConvertFrom-Json
 $cpuLookup = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($property in $cpuRaw.PSObject.Properties) { $cpuLookup[$property.Name] = $property.Value }
 
@@ -383,7 +474,7 @@ for ($index = 0; $index -lt $selectedRegions.Count; $index++) {
 
 }
 
-if ($AllRegions) {
+if ($AllRegions -and $ShardCount -eq 1) {
     foreach ($currency in $currencyCodes) {
         $currencyOutputPath = Join-Path $regionOutputRoot $currency.ToLowerInvariant()
         $selectedFileNames = @($selectedRegions | ForEach-Object { "$_.json" })
@@ -405,7 +496,7 @@ $regionIndex = @(Get-ChildItem -LiteralPath $indexCurrencyPath -Filter '*.json' 
         name = [string] $existingCatalog.region
         displayName = [string] $existingCatalog.displayName
         skuCount = @($existingCatalog.skus).Count
-        generatedAt = [string] $existingCatalog.generatedAt
+        generatedAt = Convert-ToGeneratedAtString $existingCatalog.generatedAt
     }
 } | Sort-Object displayName)
 Write-DeterministicJson -Value $regionIndex -Path (Join-Path $OutputPath 'regions.json')

@@ -59,6 +59,7 @@
                 class="result-card"
                 [class.not-found]="result.status !== 'recommended'"
                 [class.mandatory]="result.mandatoryUpgrade"
+                [class.temp-disk-change]="dropsTempDisk(result)"
               >
                 <div class="result-summary">
                   <button
@@ -104,7 +105,7 @@
                         [class.mandatory-retirement]="result.mandatoryUpgrade"
                         href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retired-sizes-list"
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                       >
                         {{
                           result.mandatoryUpgrade ? 'Mandatory upgrade · retired' : 'Scheduled EOL'
@@ -148,18 +149,22 @@
                         class="info-link"
                         href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/resize-vm?tabs=portal#limitations"
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         title="Linux supports resizing between VM sizes with and without a local temp disk. Windows requires both the source and target to either have a local temp disk or have no local temp disk."
                         aria-label="Read Azure temp disk resize limitations"
                         >ⓘ</a
                       >
                     </small>
                     <strong>{{ localStorage(result.recommendation?.vm) }}</strong>
-                    <span>{{
-                      result.recommendation?.vm?.profile?.localTempDisk
-                        ? 'Preserved'
-                        : 'Not required'
-                    }}</span>
+                    @if (dropsTempDisk(result)) {
+                      <span class="temp-disk-warning">⚠ Removed — reconfigure temp workloads</span>
+                    } @else {
+                      <span>{{
+                        result.recommendation?.vm?.profile?.localTempDisk
+                          ? 'Preserved'
+                          : 'Not required'
+                      }}</span>
+                    }
                   </div>
 
                   <div class="summary-cell price">
@@ -308,11 +313,11 @@
                       </div>
 
                       @if (candidate.notes.length > 0) {
-                        <ul class="candidate-notes">
+                        <div class="candidate-notes" role="list">
                           @for (note of candidate.notes; track note) {
-                            <li>{{ note }}</li>
+                            <div role="listitem">• {{ note }}</div>
                           }
-                        </ul>
+                        </div>
                       }
 
                       <div class="pricing-comparison">

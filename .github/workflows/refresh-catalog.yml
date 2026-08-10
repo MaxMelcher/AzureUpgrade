@@ -6,19 +6,36 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
+concurrency:
+  group: refresh-vm-catalog
+  cancel-in-progress: false
+
 jobs:
-  refresh:
+  generate:
+    name: Generate shard ${{ matrix.number }}/6
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      max-parallel: 3
+      matrix:
+        include:
+          - shard: 0
+            number: 1
+          - shard: 1
+            number: 2
+          - shard: 2
+            number: 3
+          - shard: 3
+            number: 4
+          - shard: 4
+            number: 5
+          - shard: 5
+            number: 6
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
 
       - name: Sign in to Azure
         uses: azure/login@v3
@@ -27,18 +44,66 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Generate regional catalogs
+      - name: Generate regional catalog shard
         shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           ./tools/Generate-VmCatalog.ps1 `
-            -AllRegions
+            -AllRegions `
+            -ShardIndex ${{ matrix.shard }} `
+            -ShardCount 6 `
+            -CpuMetadataPath ./src/assets/data/cpu-families.json `
+            -OutputPath $env:RUNNER_TEMP/catalog
+
+      - name: Upload catalog shard
+        uses: actions/upload-artifact@v7
+        with:
+          name: catalog-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/catalog/regions
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
+
+  refresh:
+    name: Merge, validate and commit
+    needs: generate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Replace catalogs with merged shards
+        shell: bash
+        run: |
+          rm -rf src/assets/data/regions
+          mkdir -p src/assets/data/regions
+
+      - name: Download catalog shards
+        uses: actions/download-artifact@v8
+        with:
+          pattern: catalog-shard-*
+          path: src/assets/data/regions
+          merge-multiple: true
+
+      - name: Validate catalogs and rebuild region index
+        shell: pwsh
+        run: ./tools/Build-RegionIndex.ps1
 
       - name: Install dependencies
         run: npm ci
 
       - name: Test and build
         run: |
-          npm test
+          npx ng test --watch=false
           npm run build
           npm run qa:recommendations
 

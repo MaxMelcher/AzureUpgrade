@@ -51,8 +51,21 @@ export class ResultsListComponent {
       {
         key: 'cost',
         title: 'Cost optimizations',
-        description: 'Fully compatible replacements that are at least 5% cheaper.',
-        results: inState('recommended').filter((result) => !result.mandatoryUpgrade),
+        description:
+          'Compatible replacements that are at least 5% cheaper. Optional Linux temp-disk removal is highlighted.',
+        results: inState('recommended').filter(
+          (result) => !result.mandatoryUpgrade && result.recommendationType === 'COST_OPTIMIZATION',
+        ),
+      },
+      {
+        key: 'modernization',
+        title: 'Generation modernizations',
+        description:
+          'Exact-shape successors on a newer processor generation. A saving is only shown when both retail prices are available.',
+        results: inState('recommended').filter(
+          (result) =>
+            !result.mandatoryUpgrade && result.recommendationType === 'PERFORMANCE_UPGRADE',
+        ),
       },
       {
         key: 'lifecycle',
@@ -123,6 +136,10 @@ export class ResultsListComponent {
     return (vm.tempDiskMB ?? 0) > 0 ? this.gbFromMb(vm.tempDiskMB) : 'Included';
   }
 
+  protected dropsTempDisk(result: RecommendationResult): boolean {
+    return result.recommendation?.lostCapabilities.includes('local/temp disk') ?? false;
+  }
+
   protected absolute(value: number): number {
     return Math.abs(value);
   }
@@ -144,6 +161,7 @@ export class ResultsListComponent {
   }
 
   protected stateLabel(result: RecommendationResult): string {
+    if (result.recommendationType === 'PERFORMANCE_UPGRADE') return 'Generation modernization';
     return (
       {
         keep: 'Keep',

@@ -127,13 +127,16 @@ h2 {
 .result-card.mandatory {
   border-left: 4px solid var(--danger);
 }
+.result-card.temp-disk-change {
+  border-left: 4px solid var(--warning);
+}
 .result-summary {
   align-items: center;
   display: grid;
   gap: 14px;
   grid-template-columns:
     28px minmax(145px, 1.2fr) 18px minmax(160px, 1.3fr)
-    0.58fr 0.68fr 0.62fr 0.62fr 58px;
+    0.58fr 0.68fr 0.62fr 0.62fr 0.62fr 58px;
   min-height: 88px;
   padding: 10px 18px 10px 10px;
 }
@@ -216,6 +219,10 @@ strong {
 }
 .negative {
   color: var(--danger) !important;
+}
+.temp-disk-warning {
+  color: var(--warning-text) !important;
+  font-weight: 700;
 }
 .confidence {
   border-radius: 999px;
@@ -338,7 +345,7 @@ strong {
 
 @media (max-width: 1050px) {
   .result-summary {
-    grid-template-columns: 28px 1.2fr 18px 1.3fr 0.7fr 0.65fr 0.65fr 58px;
+    grid-template-columns: 28px 1.2fr 18px 1.3fr 0.7fr 0.65fr 0.65fr 0.65fr 58px;
   }
   .summary-cell:nth-of-type(4) {
     display: none;

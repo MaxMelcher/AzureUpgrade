@@ -131,6 +131,7 @@ export interface RejectedCandidateStatistics {
   memory: number;
   constrainedShape: number;
   burstableClass: number;
+  isolatedProfile: number;
   localStorage: number;
   premiumIO: number;
   network: number;
@@ -205,6 +206,11 @@ export interface RecommendationResult {
   explanation: string;
   confidence: Confidence;
   mandatoryUpgrade: boolean;
+}
+
+export interface RecommendationOptions {
+  includeMigrationRecommendations?: boolean;
+  keepTempDisk?: boolean;
 }
 
 export interface QualityMatrixRow {

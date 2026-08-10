@@ -4,6 +4,7 @@ import {
   Confidence,
   OperatingSystem,
   QualityMatrixRow,
+  RecommendationOptions,
   RecommendationResult,
   RecommendationState,
   RecommendationType,
@@ -52,6 +53,7 @@ export class RecommendationEngine {
     sourceSku: string,
     region: string,
     os: OperatingSystem,
+    options: RecommendationOptions = {},
   ): RecommendationResult {
     const source = this.skuLookup.get(sourceSku.trim().toLowerCase()) ?? null;
     const rejected = this.emptyStatistics();
@@ -89,15 +91,27 @@ export class RecommendationEngine {
 
     const sourcePrice = this.priceFor(source, os);
     const evaluated: EvaluatedCandidate[] = [];
+    const migrationCandidates: EvaluatedCandidate[] = [];
+    const modernizationCandidates: EvaluatedCandidate[] = [];
+    const includeMigrationRecommendations =
+      mandatoryUpgrade && options.includeMigrationRecommendations === true;
+    const allowTempDiskRemoval =
+      os === 'linux' && !mandatoryUpgrade && options.keepTempDisk === false;
     for (const candidate of this.catalog.skus) {
-      const rejection = this.rejectionReason(source, candidate, os);
-      if (rejection) {
+      const rejection = this.rejectionReason(source, candidate, os, allowTempDiskRemoval);
+      const migrationEligible =
+        includeMigrationRecommendations &&
+        this.migrationRejectionReason(source, candidate, os) === null;
+      const modernizationEligible = this.isModernizationCandidate(source, candidate, os);
+      if (rejection && !migrationEligible && !modernizationEligible) {
         rejected[rejection]++;
         continue;
       }
+      if (rejection) rejected[rejection]++;
 
       const hourlyPrice = this.priceFor(candidate, os)!;
-      evaluated.push({
+      const evaluation = this.evaluate(source, candidate, os, allowTempDiskRemoval);
+      const evaluatedCandidate: EvaluatedCandidate = {
         vm: candidate,
         hourlyPrice,
         monthlySaving: sourcePrice === null ? null : (sourcePrice - hourlyPrice) * 730,
@@ -105,8 +119,27 @@ export class RecommendationEngine {
           sourcePrice !== null && sourcePrice > 0
             ? ((sourcePrice - hourlyPrice) / sourcePrice) * 100
             : null,
-        ...this.evaluate(source, candidate, os),
-      });
+        ...evaluation,
+      };
+      if (!rejection) evaluated.push(evaluatedCandidate);
+      if (migrationEligible) {
+        migrationCandidates.push({
+          ...evaluatedCandidate,
+          notes: [
+            'Best-fit migration: resource limits or workload profile may change and must be validated before migration.',
+            ...evaluation.notes,
+          ],
+        });
+      }
+      if (modernizationEligible) {
+        modernizationCandidates.push({
+          ...evaluatedCandidate,
+          notes: [
+            'Generation modernization: validate temporary storage and resource-limit changes before resizing.',
+            ...evaluation.notes,
+          ],
+        });
+      }
     }
 
     const byCategory = (category: CandidateCategory): EvaluatedCandidate[] =>
@@ -116,7 +149,13 @@ export class RecommendationEngine {
     const alternativeArchitecture = byCategory('alternative-architecture');
     const manualReview = byCategory('manual-review');
 
-    const selection = this.select(source, mandatoryUpgrade, compatible);
+    const selection = this.select(
+      source,
+      mandatoryUpgrade,
+      compatible,
+      migrationCandidates.sort(this.byPrice(source)),
+      modernizationCandidates.sort(this.byPrice(source)),
+    );
     const primary = selection
       ? this.toCandidate(selection.candidate, selection.state, selection.recommendationType, source)
       : mandatoryUpgrade
@@ -200,6 +239,8 @@ export class RecommendationEngine {
     source: VmSku,
     mandatoryUpgrade: boolean,
     compatible: EvaluatedCandidate[],
+    migrationCandidates: EvaluatedCandidate[],
+    modernizationCandidates: EvaluatedCandidate[],
   ): {
     candidate: EvaluatedCandidate;
     state: RecommendationState;
@@ -211,7 +252,8 @@ export class RecommendationEngine {
       candidate.savingPercent >= MATERIAL_SAVING_PERCENT;
 
     if (mandatoryUpgrade) {
-      const replacement = this.closestSizedCandidates(source, compatible)[0] ?? null;
+      const candidates = migrationCandidates.length > 0 ? migrationCandidates : compatible;
+      const replacement = this.closestSizedCandidates(source, candidates)[0] ?? null;
       if (!replacement) return null;
       return {
         candidate: replacement,
@@ -233,6 +275,17 @@ export class RecommendationEngine {
       };
     }
 
+    if (source.lifecycleStatus === 'previousGeneration') {
+      const modernization = this.closestSizedCandidates(source, modernizationCandidates)[0];
+      if (modernization && modernization.vm.vcpusAvailable === source.vcpusAvailable) {
+        return {
+          candidate: modernization,
+          state: 'recommended',
+          recommendationType: 'PERFORMANCE_UPGRADE',
+        };
+      }
+    }
+
     return null;
   }
 
@@ -241,6 +294,7 @@ export class RecommendationEngine {
     source: VmSku,
     candidate: VmSku,
     os: OperatingSystem,
+    allowTempDiskRemoval = false,
   ): RejectionReason | null {
     if (candidate.name === source.name) return 'sourceSku';
     if (
@@ -250,6 +304,7 @@ export class RecommendationEngine {
       return 'retirement';
     if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
     if (this.priceFor(candidate, os) === null) return 'price';
+    if (source.profile.isolated !== candidate.profile.isolated) return 'isolatedProfile';
     if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
     if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
     if (
@@ -263,7 +318,7 @@ export class RecommendationEngine {
     if (this.hasAccelerator(source) && !this.atLeast(candidate.gpus, source.gpus))
       return 'accelerator';
     if (
-      !this.localTempDiskCompatible(source, candidate, os) ||
+      !this.localTempDiskCompatible(source, candidate, allowTempDiskRemoval) ||
       (source.profile.localNvme && !candidate.profile.localNvme) ||
       (source.profile.storageBandwidthOptimized && !candidate.profile.storageBandwidthOptimized) ||
       !this.atLeast(candidate.maxDataDisks, source.maxDataDisks)
@@ -281,8 +336,76 @@ export class RecommendationEngine {
     return null;
   }
 
+  /**
+   * Best-fit migration filters. Unlike an in-place resize, a migration may change temp storage,
+   * disk/NIC limits and workload family, but never processor domain, isolation, generation,
+   * accelerator class, minimum capacity or specialized hardware capabilities.
+   */
+  private migrationRejectionReason(
+    source: VmSku,
+    candidate: VmSku,
+    os: OperatingSystem,
+  ): RejectionReason | 'processorDomain' | 'specializedProfile' | null {
+    if (candidate.name === source.name) return 'sourceSku';
+    if (
+      candidate.lifecycleStatus === 'retired' ||
+      candidate.lifecycleStatus === 'retirementAnnounced'
+    )
+      return 'retirement';
+    if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
+    if (this.priceFor(candidate, os) === null) return 'price';
+    if (!this.isSameCpuVendor(source, candidate)) return 'processorDomain';
+    if (
+      source.cpuArchitecture === null ||
+      candidate.cpuArchitecture === null ||
+      source.cpuArchitecture !== candidate.cpuArchitecture
+    )
+      return 'processorDomain';
+    if (source.profile.isolated !== candidate.profile.isolated) return 'isolatedProfile';
+    if (this.isOlderGeneration(source, candidate)) return 'olderGeneration';
+    if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
+    if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
+    if (this.isConstrained(source) !== this.isConstrained(candidate)) return 'constrainedShape';
+    if (source.profile.burstable !== candidate.profile.burstable) return 'burstableClass';
+    if (!this.isSameAccelerator(source, candidate)) return 'accelerator';
+    if (
+      source.profile.confidential !== candidate.profile.confidential ||
+      source.profile.hpc !== candidate.profile.hpc ||
+      (source.profile.localNvme && !candidate.profile.localNvme) ||
+      (source.profile.storageBandwidthOptimized && !candidate.profile.storageBandwidthOptimized) ||
+      (source.profile.networkOptimized && !candidate.profile.networkOptimized) ||
+      (source.rdma === true && candidate.rdma !== true)
+    )
+      return 'specializedProfile';
+    return null;
+  }
+
+  private isModernizationCandidate(source: VmSku, candidate: VmSku, os: OperatingSystem): boolean {
+    return (
+      source.lifecycleStatus === 'previousGeneration' &&
+      this.migrationRejectionReason(source, candidate, os) === null &&
+      this.sameFamilyLineage(source, candidate) &&
+      this.isSameWorkloadClass(source, candidate) &&
+      candidate.vcpusAvailable === source.vcpusAvailable &&
+      candidate.memoryGB === source.memoryGB &&
+      this.atLeast(candidate.maxDataDisks, source.maxDataDisks) &&
+      (source.premiumIO !== true || candidate.premiumIO === true) &&
+      (!source.profile.networkOptimized || candidate.profile.networkOptimized) &&
+      (source.acceleratedNetworking !== true || candidate.acceleratedNetworking === true) &&
+      (source.rdma !== true || candidate.rdma === true) &&
+      this.atLeast(candidate.maxNICs, source.maxNICs) &&
+      (!source.hyperVGenerations.includes('V1') || candidate.hyperVGenerations.includes('V1')) &&
+      this.isNewerGeneration(source, candidate)
+    );
+  }
+
   /** Classifies a surviving candidate and produces the comparison badges shown in the UI. */
-  private evaluate(source: VmSku, candidate: VmSku, os: OperatingSystem): Evaluation {
+  private evaluate(
+    source: VmSku,
+    candidate: VmSku,
+    os: OperatingSystem,
+    allowTempDiskRemoval = false,
+  ): Evaluation {
     const checks: CompatibilityCheck[] = [];
     const notes: string[] = [];
     const manual: string[] = [];
@@ -337,7 +460,9 @@ export class RecommendationEngine {
       ),
     );
 
-    const localStorageKept = this.localTempDiskCompatible(source, candidate, os);
+    const localStorageKept = this.localTempDiskCompatible(source, candidate);
+    const tempDiskRemovalAllowed =
+      allowTempDiskRemoval && source.profile.localTempDisk && !candidate.profile.localTempDisk;
     const nvmeKept = !source.profile.localNvme || candidate.profile.localNvme;
     const storageBandwidthKept =
       !source.profile.storageBandwidthOptimized || candidate.profile.storageBandwidthOptimized;
@@ -348,7 +473,7 @@ export class RecommendationEngine {
         'storage',
         'Storage requirements preserved',
         storagePassed,
-        this.storageDetail(source, candidate, os, {
+        this.storageDetail(source, candidate, {
           localStorageKept,
           nvmeKept,
           storageBandwidthKept,
@@ -358,7 +483,15 @@ export class RecommendationEngine {
     );
     if (!nvmeKept) manual.push('local NVMe storage is dropped');
     if (!storageBandwidthKept) manual.push('storage-bandwidth optimization is dropped');
-    if (!localStorageKept) manual.push('local/temp disk capacity is reduced');
+    if (!localStorageKept) {
+      if (tempDiskRemovalAllowed) {
+        notes.push(
+          'Warning: the target has no local temporary disk. Data and mounts on the source temp disk are not available on the target; move required data to persistent storage and reconfigure swap or temporary workloads before resizing.',
+        );
+      } else {
+        manual.push('local/temp disk capacity is reduced');
+      }
+    }
     if (!dataDisksKept) manual.push('the data disk limit is reduced');
 
     const networkOptimizationKept =
@@ -585,7 +718,9 @@ export class RecommendationEngine {
     const state =
       recommendation.state === 'lifecycle-replacement'
         ? 'Lifecycle replacement – not a cost saving.'
-        : 'Cost optimization.';
+        : recommendation.recommendationType === 'PERFORMANCE_UPGRADE'
+          ? 'Generation modernization.'
+          : 'Cost optimization.';
 
     return [lifecycle, state, `${this.sentenceList(reasons)}.`, ...recommendation.notes]
       .filter(Boolean)
@@ -655,8 +790,14 @@ export class RecommendationEngine {
       source.profile.burstable === candidate.profile.burstable &&
       source.profile.confidential === candidate.profile.confidential &&
       source.profile.hpc === candidate.profile.hpc &&
-      (!source.profile.isolated || candidate.profile.isolated)
+      source.profile.isolated === candidate.profile.isolated
     );
+  }
+
+  private sameFamilyLineage(source: VmSku, candidate: VmSku): boolean {
+    const lineage = (family: string): string =>
+      family.replace(/v\d+(?=family$)/i, '').toLowerCase();
+    return lineage(source.family) === lineage(candidate.family);
   }
 
   private isSameAccelerator(source: VmSku, candidate: VmSku): boolean {
@@ -719,7 +860,6 @@ export class RecommendationEngine {
   private storageDetail(
     source: VmSku,
     candidate: VmSku,
-    os: OperatingSystem,
     kept: {
       localStorageKept: boolean;
       nvmeKept: boolean;
@@ -731,15 +871,15 @@ export class RecommendationEngine {
     if (!kept.storageBandwidthKept) return 'Storage-bandwidth optimization is not preserved';
     if (!kept.localStorageKept)
       return `Local/temp disk ${this.localStorage(source)} → ${this.localStorage(candidate)}`;
-    if (source.profile.localTempDisk !== candidate.profile.localTempDisk && os === 'linux')
-      return `Linux resize supports local/temp disk ${this.localStorage(source)} → ${this.localStorage(candidate)}`;
     if (!kept.dataDisksKept)
       return `Data disk limit ${source.maxDataDisks} → ${candidate.maxDataDisks}`;
     return `Local/temp disk ${this.localStorage(candidate)}, ${candidate.maxDataDisks} data disks`;
   }
 
-  private localTempDiskCompatible(source: VmSku, candidate: VmSku, os: OperatingSystem): boolean {
-    if (source.profile.localTempDisk !== candidate.profile.localTempDisk) return os === 'linux';
+  private localTempDiskCompatible(source: VmSku, candidate: VmSku, allowRemoval = false): boolean {
+    if (source.profile.localTempDisk !== candidate.profile.localTempDisk) {
+      return allowRemoval && source.profile.localTempDisk && !candidate.profile.localTempDisk;
+    }
     return !source.profile.localTempDisk || this.atLeast(candidate.tempDiskMB, source.tempDiskMB);
   }
 
@@ -811,6 +951,7 @@ export class RecommendationEngine {
       memory: 0,
       constrainedShape: 0,
       burstableClass: 0,
+      isolatedProfile: 0,
       localStorage: 0,
       premiumIO: 0,
       network: 0,

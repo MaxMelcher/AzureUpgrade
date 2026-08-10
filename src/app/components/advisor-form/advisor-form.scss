@@ -111,6 +111,15 @@ textarea:focus {
   margin-top: 3px;
   text-transform: none;
 }
+.temp-disk-toggle {
+  background: var(--details);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.temp-disk-toggle code {
+  font-size: 11px;
+}
 
 .sku-input {
   display: block;

@@ -195,7 +195,7 @@ describe('RecommendationEngine compatibility rules', () => {
     expect(result.rejected.localStorage).toBe(1);
   });
 
-  it('recommends E32_v5 for Linux when v4 and v5 are equally cheaper without a temp disk', () => {
+  it('does not treat Linux resize permission as temp-disk capability preservation', () => {
     const source = vm({
       ...intel,
       name: 'Standard_E32_v3',
@@ -240,11 +240,71 @@ describe('RecommendationEngine compatibility rules', () => {
     });
 
     const result = run(source, [source, v4, v5]);
+    const withoutTempDiskRequired = run(source, [source, v4, v5], 'linux', false, false);
+    const windows = run(source, [source, v4, v5], 'windows', false, false);
 
-    expect(result.status).toBe('recommended');
-    expect(result.recommendation?.vm.name).toBe(v5.name);
-    expect(result.recommendation?.savingPercent).toBeCloseTo(5.13, 2);
-    expect(result.recommendation?.checks.every((check) => check.passed)).toBe(true);
+    expect(result.status).toBe('keep');
+    expect(result.recommendation?.vm.name).toBe(source.name);
+    expect(result.rejected.localStorage).toBe(2);
+    expect(withoutTempDiskRequired.status).toBe('recommended');
+    expect(withoutTempDiskRequired.recommendation?.vm.name).toBe(v5.name);
+    expect(withoutTempDiskRequired.recommendation?.lostCapabilities).toContain('local/temp disk');
+    expect(
+      withoutTempDiskRequired.recommendation?.checks.find((check) => check.id === 'storage')
+        ?.passed,
+    ).toBe(false);
+    expect(withoutTempDiskRequired.recommendation?.notes.join(' ')).toContain(
+      'target has no local temporary disk',
+    );
+    expect(withoutTempDiskRequired.confidence).toBe('Medium');
+    expect(windows.rejected.localStorage).toBe(2);
+  });
+
+  it('recommends D4ds_v5 instead of dropping the D4ds_v4 temp disk', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_D4ds_v4',
+      family: 'standardDDSv4Family',
+      workloadFamily: 'D',
+      seriesVersion: 4,
+      cpuGeneration: 3,
+      vcpus: 4,
+      vcpusAvailable: 4,
+      memoryGB: 16,
+      tempDiskMB: 153600,
+      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      lifecycleStatus: 'previousGeneration',
+      prices: prices(0.2),
+    });
+    const withoutTempDisk = vm({
+      ...intel,
+      name: 'Standard_D4s_v5',
+      family: 'standardDSv5Family',
+      workloadFamily: 'D',
+      seriesVersion: 5,
+      cpuGeneration: 4,
+      vcpus: 4,
+      vcpusAvailable: 4,
+      memoryGB: 16,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.16),
+    });
+    const successor = vm({
+      ...withoutTempDisk,
+      name: 'Standard_D4ds_v5',
+      family: 'standardDDSv5Family',
+      tempDiskMB: 153600,
+      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      prices: prices(0.19),
+    });
+
+    const result = run(source, [source, withoutTempDisk, successor]);
+
+    expect(result.recommendation?.vm.name).toBe(successor.name);
+    expect(result.recommendationType).toBe('COST_OPTIMIZATION');
+    expect(result.rejected.localStorage).toBe(1);
+    expect(result.recommendation?.lostCapabilities).not.toContain('local/temp disk');
   });
 
   it('recommends a same-architecture newer generation (E2ps_v5 → E2ps_v6)', () => {
@@ -625,6 +685,92 @@ describe('RecommendationEngine compatibility rules', () => {
     expect(result.rejected.constrainedShape).toBe(1);
   });
 
+  it('never recommends an isolated profile for a non-isolated source', () => {
+    const source = vm({
+      ...amd,
+      name: 'Standard_E96-24as_v5',
+      family: 'standardEASv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 3,
+      vcpus: 96,
+      vcpusAvailable: 24,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(1),
+    });
+    const isolated = vm({
+      ...amd,
+      name: 'Standard_E112ias_v5',
+      family: 'standardEIASv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 3,
+      vcpus: 112,
+      vcpusAvailable: 112,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE, isolated: true },
+      prices: prices(0.5),
+    });
+
+    for (const os of ['linux', 'windows'] as const) {
+      const result = run(source, [source, isolated], os);
+
+      expect(result.status).toBe('keep');
+      expect(result.recommendation?.vm.name).toBe(source.name);
+      expect(result.recommendationType).toBe('KEEP');
+      expect(result.rejected.isolatedProfile).toBe(1);
+      expect(result.alternatives).toEqual([]);
+      expect(result.manualReview).toEqual([]);
+      expect(result.alternativeArchitecture).toEqual([]);
+    }
+  });
+
+  it('never uses an isolated profile as a lifecycle replacement', () => {
+    const source = vm({
+      ...amd,
+      name: 'Standard_E96-24as_v5',
+      family: 'standardEASv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 3,
+      vcpus: 96,
+      vcpusAvailable: 24,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      lifecycleStatus: 'retirementAnnounced',
+      retirement: {
+        eolDate: '2027-01-01',
+        description: 'Retirement announced',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      prices: prices(1),
+    });
+    const isolated = vm({
+      ...amd,
+      name: 'Standard_E112ias_v5',
+      family: 'standardEIASv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 3,
+      vcpus: 112,
+      vcpusAvailable: 112,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE, isolated: true },
+      prices: prices(0.5),
+    });
+
+    const result = run(source, [source, isolated]);
+
+    expect(result.status).toBe('manual-migration-required');
+    expect(result.recommendation).toBeNull();
+    expect(result.rejected.isolatedProfile).toBe(1);
+  });
+
   it('requires migration for an announced EOL even when the successor costs more', () => {
     const source = vm({
       ...intel,
@@ -659,6 +805,136 @@ describe('RecommendationEngine compatibility rules', () => {
     expect(result.recommendation?.vm.name).toBe(successor.name);
     expect(result.recommendationType).toBe('RETIREMENT_MIGRATION');
     expect(result.recommendation?.savingPercent).toBeCloseTo(-20);
+  });
+
+  it('uses an exact-shape best-fit migration when strict resize limits require oversizing', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_B2s',
+      family: 'standardBSFamily',
+      workloadFamily: 'B',
+      seriesVersion: 1,
+      cpuGeneration: 1,
+      vcpus: 2,
+      vcpusAvailable: 2,
+      memoryGB: 4,
+      maxNICs: 3,
+      lifecycleStatus: 'retirementAnnounced',
+      retirement: {
+        eolDate: '2028-11-15',
+        description: 'Retirement announced',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      profile: { ...EMPTY_PROFILE, burstable: true, localTempDisk: true },
+      prices: prices(0.04),
+    });
+    const exactMigration = vm({
+      ...intel,
+      name: 'Standard_B2ls_v2',
+      family: 'standardBsv2Family',
+      workloadFamily: 'B',
+      seriesVersion: 2,
+      cpuGeneration: 4,
+      vcpus: 2,
+      vcpusAvailable: 2,
+      memoryGB: 4,
+      maxNICs: 2,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE, burstable: true },
+      prices: prices(0.04),
+    });
+    const strictOversize = vm({
+      ...exactMigration,
+      name: 'Standard_B4ls_v2',
+      vcpus: 4,
+      vcpusAvailable: 4,
+      memoryGB: 8,
+      maxNICs: 3,
+      prices: prices(0.13),
+    });
+
+    const strict = run(source, [source, exactMigration, strictOversize]);
+    const bestFit = run(source, [source, exactMigration, strictOversize], 'linux', true);
+
+    expect(strict.recommendation).toBeNull();
+    expect(strict.status).toBe('manual-migration-required');
+    expect(bestFit.recommendation?.vm.name).toBe(exactMigration.name);
+    expect(bestFit.recommendationType).toBe('RETIREMENT_MIGRATION');
+    expect(bestFit.recommendation?.notes.join(' ')).toContain('Best-fit migration');
+  });
+
+  it('allows a best-fit mandatory migration to a memory-optimized family', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_D15_v2',
+      family: 'standardDv2Family',
+      workloadFamily: 'D',
+      seriesVersion: 2,
+      cpuGeneration: 1,
+      vcpus: 20,
+      vcpusAvailable: 20,
+      memoryGB: 140,
+      maxDataDisks: 64,
+      lifecycleStatus: 'retirementAnnounced',
+      retirement: {
+        eolDate: '2028-11-15',
+        description: 'Retirement announced',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      prices: prices(1.8),
+    });
+    const target = vm({
+      ...intel,
+      name: 'Standard_E20_v5',
+      family: 'standardEv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 4,
+      vcpus: 20,
+      vcpusAvailable: 20,
+      memoryGB: 160,
+      maxDataDisks: 32,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(1.1),
+    });
+
+    const result = run(source, [source, target], 'linux', true);
+
+    expect(result.recommendation?.vm.name).toBe(target.name);
+    expect(result.status).toBe('lifecycle-replacement');
+  });
+
+  it('modernizes a previous-generation exact shape when the source price is unavailable', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_D16s_v3',
+      family: 'standardDSv3Family',
+      seriesVersion: 3,
+      cpuGeneration: 2,
+      vcpus: 16,
+      vcpusAvailable: 16,
+      memoryGB: 64,
+      lifecycleStatus: 'previousGeneration',
+      prices: { ...prices(), linuxPaygHourly: null },
+    });
+    const target = vm({
+      ...intel,
+      name: 'Standard_D16s_v5',
+      family: 'standardDSv5Family',
+      seriesVersion: 5,
+      cpuGeneration: 4,
+      vcpus: 16,
+      vcpusAvailable: 16,
+      memoryGB: 64,
+      prices: prices(0.67),
+    });
+
+    const result = run(source, [source, target]);
+
+    expect(result.recommendation?.vm.name).toBe(target.name);
+    expect(result.recommendationType).toBe('PERFORMANCE_UPGRADE');
+    expect(result.recommendation?.savingPercent).toBeNull();
   });
 
   it('uses generation only to break a capability and price tie', () => {
@@ -730,6 +1006,11 @@ function run(
   source: VmSku,
   skus: VmSku[],
   os: 'linux' | 'windows' = 'linux',
+  includeMigrationRecommendations = false,
+  keepTempDisk = true,
 ): RecommendationResult {
-  return new RecommendationEngine(region(skus)).findRecommendations(source.name, 'westeurope', os);
+  return new RecommendationEngine(region(skus)).findRecommendations(source.name, 'westeurope', os, {
+    includeMigrationRecommendations,
+    keepTempDisk,
+  });
 }
