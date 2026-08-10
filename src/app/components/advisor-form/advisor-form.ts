@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, effect, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyCode, OperatingSystem, RegionInfo } from '../../models/vm.models';
 
@@ -18,6 +26,7 @@ export interface AdvisorRequest {
 })
 export class AdvisorFormComponent {
   private readonly regionStorageKey = 'azure-vm-upgrade-advisor.region';
+  private readonly regionCollator = new Intl.Collator(undefined, { sensitivity: 'base' });
   public readonly regions = input.required<RegionInfo[]>();
   public readonly busy = input(false);
   public readonly findUpgrades = output<AdvisorRequest>();
@@ -27,6 +36,22 @@ export class AdvisorFormComponent {
   protected currency: CurrencyCode = 'GBP';
   protected skuInput = ['Standard_D2as_v5', 'Standard_B2ats_v2', 'Standard_A1_v2'].join('\n');
   protected readonly validationError = signal('');
+  protected readonly regionSearch = signal('');
+  protected readonly filteredRegions = computed(() => {
+    const query = this.regionSearch().trim().toLocaleLowerCase();
+    return this.regions()
+      .filter(
+        (region) =>
+          query.length === 0 ||
+          region.displayName.toLocaleLowerCase().includes(query) ||
+          region.name.toLocaleLowerCase().includes(query),
+      )
+      .sort(
+        (left, right) =>
+          this.regionCollator.compare(left.displayName, right.displayName) ||
+          this.regionCollator.compare(left.name, right.name),
+      );
+  });
 
   public constructor() {
     effect(() => {

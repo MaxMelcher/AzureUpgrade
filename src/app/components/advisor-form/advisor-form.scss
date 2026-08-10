@@ -49,6 +49,7 @@ legend {
   margin-bottom: 8px;
 }
 
+input,
 select,
 textarea {
   background: var(--input);
@@ -60,9 +61,14 @@ textarea {
   width: 100%;
 }
 
+input,
 select {
   height: 44px;
   padding: 0 12px;
+}
+.region-search {
+  box-sizing: border-box;
+  margin-bottom: 8px;
 }
 .control-note {
   color: var(--muted);
@@ -74,6 +80,7 @@ select {
 .control-note a {
   color: var(--azure);
 }
+input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--azure);

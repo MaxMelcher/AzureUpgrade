@@ -282,30 +282,85 @@ describe('RecommendationEngine compatibility rules', () => {
     expect(result.recommendation?.checks.every((check) => check.passed)).toBe(true);
   });
 
-  it('recommends a supported older generation when it is compatible and cheaper', () => {
+  it('never recommends an older constrained generation even when it is cheaper', () => {
     const source = vm({
       ...amd,
-      name: 'Standard_D2ads_v5',
-      family: 'standardDADSv5Family',
+      name: 'Standard_E96-24as_v5',
+      family: 'standardEASv5Family',
+      workloadFamily: 'E',
       seriesVersion: 5,
       cpuGeneration: 3,
-      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      vcpus: 96,
+      vcpusAvailable: 24,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
       prices: prices(0.1),
     });
     const older = vm({
       ...amd,
-      name: 'Standard_D2ds_v4',
-      family: 'standardDDSv4Family',
+      name: 'Standard_E96-24as_v4',
+      family: 'standardEASv4Family',
+      workloadFamily: 'E',
       seriesVersion: 4,
       cpuGeneration: 2,
-      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      vcpus: 96,
+      vcpusAvailable: 24,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
       prices: prices(0.05),
     });
 
     const result = run(source, [source, older]);
 
-    expect(result.recommendation?.vm.name).toBe('Standard_D2ds_v4');
-    expect(result.recommendationType).toBe('COST_OPTIMIZATION');
+    expect(result.status).toBe('keep');
+    expect(result.recommendation?.vm.name).toBe(source.name);
+    expect(result.recommendationType).toBe('KEEP');
+    expect(result.rejected.olderGeneration).toBe(1);
+  });
+
+  it('does not use an older generation as a lifecycle replacement', () => {
+    const source = vm({
+      ...amd,
+      name: 'Standard_E96-24as_v5',
+      family: 'standardEASv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 3,
+      vcpus: 96,
+      vcpusAvailable: 24,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      lifecycleStatus: 'retirementAnnounced',
+      retirement: {
+        eolDate: '2027-01-01',
+        description: 'Retirement announced',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      prices: prices(0.1),
+    });
+    const older = vm({
+      ...amd,
+      name: 'Standard_E96-24as_v4',
+      family: 'standardEASv4Family',
+      workloadFamily: 'E',
+      seriesVersion: 4,
+      cpuGeneration: 2,
+      vcpus: 96,
+      vcpusAvailable: 24,
+      memoryGB: 672,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.05),
+    });
+
+    const result = run(source, [source, older]);
+
+    expect(result.status).toBe('manual-migration-required');
+    expect(result.recommendation).toBeNull();
+    expect(result.rejected.olderGeneration).toBe(1);
   });
 
   it('keeps the workload family and flags cross-family candidates for manual review', () => {

@@ -126,6 +126,7 @@ export interface RejectedCandidateStatistics {
   price: number;
   subscriptionRestriction: number;
   retirement: number;
+  olderGeneration: number;
   usableVcpus: number;
   memory: number;
   constrainedShape: number;

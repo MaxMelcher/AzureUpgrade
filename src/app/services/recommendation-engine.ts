@@ -277,6 +277,7 @@ export class RecommendationEngine {
       !this.atLeast(candidate.maxNICs, source.maxNICs)
     )
       return 'network';
+    if (this.isOlderGeneration(source, candidate)) return 'olderGeneration';
     return null;
   }
 
@@ -394,7 +395,7 @@ export class RecommendationEngine {
     checks.push(
       this.check(
         'generation',
-        'Generation (tie-breaker only)',
+        'Same or newer generation',
         true,
         `${this.generationLabel(source)} → ${this.generationLabel(candidate)}`,
       ),
@@ -805,6 +806,7 @@ export class RecommendationEngine {
       price: 0,
       subscriptionRestriction: 0,
       retirement: 0,
+      olderGeneration: 0,
       usableVcpus: 0,
       memory: 0,
       constrainedShape: 0,

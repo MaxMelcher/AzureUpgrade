@@ -10,12 +10,28 @@
     <div class="control-grid">
       <label>
         <span>Azure region</span>
+        <input
+          class="region-search"
+          type="search"
+          name="regionSearch"
+          autocomplete="off"
+          placeholder="Search by name or region code"
+          aria-label="Search Azure regions"
+          [ngModel]="regionSearch()"
+          (ngModelChange)="regionSearch.set($event)"
+        />
         <select name="region" [ngModel]="region" (ngModelChange)="selectRegion($event)" required>
           <option value="" disabled>Select a region</option>
-          @for (item of regions(); track item.name) {
+          @for (item of filteredRegions(); track item.name) {
             <option [value]="item.name">{{ item.displayName }} ({{ item.skuCount }} SKUs)</option>
           }
+          @if (filteredRegions().length === 0) {
+            <option value="" disabled>No matching regions</option>
+          }
         </select>
+        <small class="control-note">
+          {{ filteredRegions().length }} of {{ regions().length }} regions shown
+        </small>
       </label>
 
       <label>
@@ -30,7 +46,7 @@
           <a
             href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/resize-vm?tabs=portal#limitations"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             >Resize limitations</a
           >
         </small>
