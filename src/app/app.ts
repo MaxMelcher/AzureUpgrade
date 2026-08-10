@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ApprovalMatrixComponent } from './components/approval-matrix/approval-matrix';
 import { AdvisorFormComponent, AdvisorRequest } from './components/advisor-form/advisor-form';
 import { ResultsListComponent } from './components/results-list/results-list';
 import { CurrencyCode, RegionInfo, RecommendationResult } from './models/vm.models';
@@ -9,7 +10,7 @@ import { RecommendationEngine } from './services/recommendation-engine';
 
 @Component({
   selector: 'app-root',
-  imports: [DatePipe, AdvisorFormComponent, ResultsListComponent],
+  imports: [DatePipe, ApprovalMatrixComponent, AdvisorFormComponent, ResultsListComponent],
   template: `
     <header class="app-header">
       <div class="shell header-content">
@@ -17,49 +18,60 @@ import { RecommendationEngine } from './services/recommendation-engine';
           <span class="brand-mark" aria-hidden="true">A</span>
           <span>Azure VM Upgrade Advisor</span>
         </a>
-        <a
-          class="docs-link"
-          href="https://azure.microsoft.com/pricing/details/virtual-machines/"
-          target="_blank"
-          rel="noreferrer"
-          >Azure retail pricing</a
-        >
+        <nav class="header-links" aria-label="Primary navigation">
+          @if (approvalView) {
+            <a class="docs-link" href="/">Advisor</a>
+          } @else {
+            <a class="docs-link" href="/?view=approval">Approval matrix</a>
+          }
+          <a
+            class="docs-link"
+            href="https://azure.microsoft.com/pricing/details/virtual-machines/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Azure retail pricing</a
+          >
+        </nav>
       </div>
     </header>
 
     <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Modernize with confidence</p>
-        <h1>Find a compatible, modern Azure VM</h1>
-        <p class="hero-copy">
-          Compare regional availability, authoritative Azure SKU capabilities, and retail prices.
-        </p>
-      </section>
-
       @if (regionsError()) {
         <div class="notice error" role="alert">{{ regionsError() }}</div>
       }
 
-      <app-advisor-form
-        [regions]="regions()"
-        [busy]="busy()"
-        (findUpgrades)="findUpgrades($event)"
-      />
+      @if (approvalView) {
+        <app-approval-matrix [regions]="regions()" />
+      } @else {
+        <section class="hero">
+          <p class="eyebrow">Modernize with confidence</p>
+          <h1>Find a compatible, modern Azure VM</h1>
+          <p class="hero-copy">
+            Compare regional availability, authoritative Azure SKU capabilities, and retail prices.
+          </p>
+        </section>
 
-      @if (searchError()) {
-        <div class="notice error" role="alert">{{ searchError() }}</div>
-      }
-
-      @if (results().length > 0) {
-        <app-results-list
-          [results]="results()"
-          [regionName]="selectedRegionName()"
-          [currencyCode]="currencyCode()"
-          [busyMatrix]="busyMatrix()"
-          (copyResults)="copyResults()"
-          (downloadCsv)="downloadResults()"
-          (downloadMatrix)="downloadQualityMatrix()"
+        <app-advisor-form
+          [regions]="regions()"
+          [busy]="busy()"
+          (findUpgrades)="findUpgrades($event)"
         />
+
+        @if (searchError()) {
+          <div class="notice error" role="alert">{{ searchError() }}</div>
+        }
+
+        @if (results().length > 0) {
+          <app-results-list
+            [results]="results()"
+            [regionName]="selectedRegionName()"
+            [currencyCode]="currencyCode()"
+            [busyMatrix]="busyMatrix()"
+            (copyResults)="copyResults()"
+            (downloadCsv)="downloadResults()"
+            (downloadMatrix)="downloadQualityMatrix()"
+          />
+        }
       }
     </main>
 
@@ -97,6 +109,8 @@ import { RecommendationEngine } from './services/recommendation-engine';
 export class App implements OnInit {
   private readonly catalogService = inject(CatalogService);
   private readonly exportService = inject(ExportService);
+  protected readonly approvalView =
+    new URLSearchParams(window.location.search).get('view') === 'approval';
 
   protected readonly regions = signal<RegionInfo[]>([]);
   protected readonly results = signal<RecommendationResult[]>([]);
@@ -174,7 +188,10 @@ export class App implements OnInit {
 
     this.busyMatrix.set(true);
     window.setTimeout(() => {
-      const rows = this.engine!.createQualityMatrix([this.lastRequest!.os]);
+      const rows = this.engine!.createQualityMatrix([this.lastRequest!.os], {
+        includeMigrationRecommendations: this.lastRequest!.includeMigrationRecommendations,
+        keepTempDisk: this.lastRequest!.keepTempDisk,
+      });
       this.exportService.downloadQualityMatrix(
         rows,
         this.currencyCode(),

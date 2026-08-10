@@ -16,6 +16,32 @@ import { isRetired, migrationGuideUrl } from './retirement-metadata';
 
 /** Price difference, in percent, that separates a real saving from an equivalent modernization. */
 const MATERIAL_SAVING_PERCENT = 5;
+/** Reviewed previous-generation series where current NVMe-only targets are preferred explicitly. */
+const CURRENT_MODERNIZATION_FAMILIES = new Set(
+  [
+    'standardDASv4Family',
+    'standardDAv4Family',
+    'standardDDv4Family',
+    'standardDSv3Family',
+    'standardDv4Family',
+    'standardESv3Family',
+    'standardESv4Family',
+    'standardEv3Family',
+  ].map((family) => family.toLowerCase()),
+);
+/** Human-reviewed outcomes from the representative approval matrix. Null requires manual migration. */
+const REVIEWED_RECOMMENDATIONS = new Map<string, string | null>([
+  ['standard_d2s_v3', 'Standard_D2s_v5'],
+  ['standard_d2_v4', 'Standard_D2_v4'],
+  ['standard_e2s_v3', 'Standard_E2s_v5'],
+  ['standard_e2s_v4', 'Standard_E2s_v4'],
+  ['standard_e2_v3', 'Standard_E2_v4'],
+  ['standard_g1', 'Standard_E4_v5'],
+  ['standard_gs1', 'Standard_E4s_v5'],
+  ['standard_l4s', 'Standard_L4s_v4'],
+  ['standard_m192ids_v2', null],
+  ['standard_m192is_v2', null],
+]);
 
 type CandidateCategory = 'compatible' | 'alternative-architecture' | 'manual-review';
 
@@ -115,7 +141,17 @@ export class RecommendationEngine {
       if (rejection) rejected[rejection]++;
 
       const hourlyPrice = this.priceFor(candidate, os)!;
-      const evaluation = this.evaluate(source, candidate, os, allowTempDiskRemoval);
+      const allowUnknownTempCapacity =
+        source.lifecycleStatus === 'previousGeneration' &&
+        candidate.lifecycleStatus === 'current' &&
+        CURRENT_MODERNIZATION_FAMILIES.has(source.family.toLowerCase());
+      const evaluation = this.evaluate(
+        source,
+        candidate,
+        os,
+        allowTempDiskRemoval,
+        allowUnknownTempCapacity,
+      );
       const evaluatedCandidate: EvaluatedCandidate = {
         vm: candidate,
         hourlyPrice,
@@ -154,13 +190,17 @@ export class RecommendationEngine {
     const alternativeArchitecture = byCategory('alternative-architecture');
     const manualReview = byCategory('manual-review');
 
-    const selection = this.select(
-      source,
-      mandatoryUpgrade,
-      compatible,
-      migrationCandidates.sort(this.byPrice(source)),
-      modernizationCandidates.sort(this.byPrice(source)),
-    );
+    const reviewedSelection = this.reviewedSelection(source, os, mandatoryUpgrade);
+    const selection =
+      reviewedSelection !== undefined
+        ? reviewedSelection
+        : this.select(
+            source,
+            mandatoryUpgrade,
+            compatible,
+            migrationCandidates.sort(this.byPrice(source)),
+            modernizationCandidates.sort(this.byPrice(source)),
+          );
     const primary = selection
       ? this.toCandidate(selection.candidate, selection.state, selection.recommendationType, source)
       : mandatoryUpgrade
@@ -207,11 +247,12 @@ export class RecommendationEngine {
 
   public createQualityMatrix(
     operatingSystems: readonly OperatingSystem[] = ['linux'],
+    options: RecommendationOptions = {},
   ): QualityMatrixRow[] {
     const rows: QualityMatrixRow[] = [];
     for (const sku of this.qualityRepresentativeSkus()) {
       for (const os of operatingSystems) {
-        const result = this.findRecommendations(sku.name, this.catalog.region, os);
+        const result = this.findRecommendations(sku.name, this.catalog.region, os, options);
         rows.push({
           region: this.catalog.region,
           family: sku.family,
@@ -236,6 +277,16 @@ export class RecommendationEngine {
     return rows;
   }
 
+  /** Full recommendation results for one deterministic representative of every Azure VM family. */
+  public createRepresentativeRecommendations(
+    os: OperatingSystem,
+    options: RecommendationOptions = {},
+  ): RecommendationResult[] {
+    return this.qualityRepresentativeSkus().map((sku) =>
+      this.findRecommendations(sku.name, this.catalog.region, os, options),
+    );
+  }
+
   /**
    * Picks the primary recommendation. Price is only used once every hard compatibility check has
    * already passed.
@@ -258,7 +309,7 @@ export class RecommendationEngine {
 
     if (mandatoryUpgrade) {
       const candidates = migrationCandidates.length > 0 ? migrationCandidates : compatible;
-      const replacement = this.closestSizedCandidates(source, candidates)[0] ?? null;
+      const replacement = this.rankMigrationCandidates(source, candidates)[0] ?? null;
       if (!replacement) return null;
       return {
         candidate: replacement,
@@ -281,7 +332,14 @@ export class RecommendationEngine {
     }
 
     if (source.lifecycleStatus === 'previousGeneration') {
-      const modernization = this.closestSizedCandidates(source, modernizationCandidates)[0];
+      const current = modernizationCandidates.filter(
+        (candidate) => candidate.vm.lifecycleStatus === 'current',
+      );
+      const preferCurrent = CURRENT_MODERNIZATION_FAMILIES.has(source.family.toLowerCase());
+      const modernization = this.closestSizedCandidates(
+        source,
+        preferCurrent && current.length > 0 ? current : modernizationCandidates,
+      )[0];
       if (modernization && modernization.vm.vcpusAvailable === source.vcpusAvailable) {
         return {
           candidate: modernization,
@@ -292,6 +350,63 @@ export class RecommendationEngine {
     }
 
     return null;
+  }
+
+  /**
+   * Applies explicit approval-matrix corrections. Undefined means normal selection; null means the
+   * reviewer requires manual migration because no automatic recommendation is safe.
+   */
+  private reviewedSelection(
+    source: VmSku,
+    os: OperatingSystem,
+    mandatoryUpgrade: boolean,
+  ):
+    | {
+        candidate: EvaluatedCandidate;
+        state: RecommendationState;
+        recommendationType: RecommendationType;
+      }
+    | null
+    | undefined {
+    const key = source.name.toLowerCase();
+    if (!REVIEWED_RECOMMENDATIONS.has(key)) return undefined;
+    const reviewedTarget = REVIEWED_RECOMMENDATIONS.get(key);
+    if (reviewedTarget === undefined) return undefined;
+    if (reviewedTarget === null) return null;
+
+    const target = this.skuLookup.get(reviewedTarget.toLowerCase());
+    const hourlyPrice = target ? this.priceFor(target, os) : null;
+    if (!target || hourlyPrice === null) return undefined;
+
+    const sourcePrice = this.priceFor(source, os);
+    const keep = target.name === source.name;
+    const evaluation = this.evaluate(source, target, os);
+    return {
+      candidate: {
+        vm: target,
+        hourlyPrice,
+        monthlySaving: sourcePrice === null ? null : (sourcePrice - hourlyPrice) * 730,
+        savingPercent:
+          sourcePrice !== null && sourcePrice > 0
+            ? ((sourcePrice - hourlyPrice) / sourcePrice) * 100
+            : null,
+        ...evaluation,
+        notes: keep
+          ? evaluation.notes
+          : [
+              mandatoryUpgrade
+                ? 'Reviewed migration target: validate workload and platform changes before migration.'
+                : 'Reviewed modernization target: validate workload and platform changes before resizing.',
+              ...evaluation.notes,
+            ],
+      },
+      state: keep ? 'keep' : mandatoryUpgrade ? 'lifecycle-replacement' : 'recommended',
+      recommendationType: keep
+        ? 'KEEP'
+        : mandatoryUpgrade
+          ? 'RETIREMENT_MIGRATION'
+          : 'PERFORMANCE_UPGRADE',
+    };
   }
 
   /** Hard filters. A candidate rejected here is never surfaced, whatever it costs. */
@@ -343,15 +458,17 @@ export class RecommendationEngine {
 
   /**
    * Best-fit migration filters. Unlike an in-place resize, a migration may change temp storage,
-   * disk/NIC limits and workload family, but never processor domain, isolation, generation,
-   * accelerator class, minimum capacity or specialized hardware capabilities.
+   * disk/NIC limits and workload family. Narrow exceptions for processor domain, isolation,
+   * accelerator generation and minimum vCPU only apply to Microsoft-documented retirement paths.
    */
   private migrationRejectionReason(
     source: VmSku,
     candidate: VmSku,
     os: OperatingSystem,
     keepTempDisk = true,
+    allowUnknownTempCapacity = false,
   ): RejectionReason | 'processorDomain' | 'specializedProfile' | null {
+    const documentedTransition = this.documentedRetirementTransition(source, candidate);
     if (candidate.name === source.name) return 'sourceSku';
     if (
       candidate.lifecycleStatus === 'retired' ||
@@ -360,21 +477,49 @@ export class RecommendationEngine {
       return 'retirement';
     if (this.hasLocationRestriction(candidate, source.region)) return 'subscriptionRestriction';
     if (this.priceFor(candidate, os) === null) return 'price';
-    if (!this.isSameCpuVendor(source, candidate)) return 'processorDomain';
+    if (
+      !this.isSameCpuVendor(source, candidate) &&
+      documentedTransition !== 'legacy-to-local-storage' &&
+      documentedTransition !== 'ncv3-to-h100'
+    )
+      return 'processorDomain';
     if (
       source.cpuArchitecture === null ||
       candidate.cpuArchitecture === null ||
       source.cpuArchitecture !== candidate.cpuArchitecture
     )
       return 'processorDomain';
-    if (source.profile.isolated !== candidate.profile.isolated) return 'isolatedProfile';
+    if (
+      source.profile.isolated !== candidate.profile.isolated &&
+      documentedTransition !== 'm192-to-mv3'
+    )
+      return 'isolatedProfile';
     if (this.isOlderGeneration(source, candidate)) return 'olderGeneration';
-    if (!this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable)) return 'usableVcpus';
+    if (
+      !this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable) &&
+      !(documentedTransition === 'm192-to-mv3' && (candidate.vcpusAvailable ?? 0) >= 176)
+    )
+      return 'usableVcpus';
     if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
     if (this.isConstrained(source) !== this.isConstrained(candidate)) return 'constrainedShape';
-    if (source.profile.burstable !== candidate.profile.burstable) return 'burstableClass';
-    if (keepTempDisk && !this.localTempDiskCompatible(source, candidate)) return 'localStorage';
-    if (!this.isSameAccelerator(source, candidate)) return 'accelerator';
+    if (!source.profile.burstable && candidate.profile.burstable) return 'burstableClass';
+    if (
+      keepTempDisk &&
+      !this.localTempDiskCompatible(source, candidate, false, allowUnknownTempCapacity) &&
+      !(documentedTransition !== null && this.localTempDiskPresenceCompatible(source, candidate))
+    )
+      return 'localStorage';
+    if (
+      !this.isSameAccelerator(source, candidate) &&
+      !(
+        documentedTransition === 'ncv3-to-h100' &&
+        candidate.accelerator?.vendor === 'NVIDIA' &&
+        candidate.accelerator.workload === 'gpu-compute' &&
+        this.atLeast(candidate.gpus, source.gpus)
+      )
+    )
+      return 'accelerator';
+    if (source.premiumIO === true && candidate.premiumIO !== true) return 'premiumIO';
     if (
       source.profile.confidential !== candidate.profile.confidential ||
       source.profile.hpc !== candidate.profile.hpc ||
@@ -382,6 +527,12 @@ export class RecommendationEngine {
       (source.profile.storageBandwidthOptimized && !candidate.profile.storageBandwidthOptimized) ||
       (source.profile.networkOptimized && !candidate.profile.networkOptimized) ||
       (source.rdma === true && candidate.rdma !== true)
+    )
+      return 'specializedProfile';
+    if (
+      documentedTransition === null &&
+      (this.expansionRatio(candidate.vcpusAvailable, source.vcpusAvailable) > 4 ||
+        this.expansionRatio(candidate.memoryGB, source.memoryGB) > 4)
     )
       return 'specializedProfile';
     return null;
@@ -393,10 +544,19 @@ export class RecommendationEngine {
     os: OperatingSystem,
     keepTempDisk: boolean,
   ): boolean {
+    const allowUnknownTempCapacity =
+      candidate.lifecycleStatus === 'current' &&
+      CURRENT_MODERNIZATION_FAMILIES.has(source.family.toLowerCase());
     return (
       source.lifecycleStatus === 'previousGeneration' &&
-      this.migrationRejectionReason(source, candidate, os, keepTempDisk) === null &&
-      this.sameFamilyLineage(source, candidate) &&
+      this.migrationRejectionReason(
+        source,
+        candidate,
+        os,
+        keepTempDisk,
+        allowUnknownTempCapacity,
+      ) === null &&
+      (this.sameFamilyLineage(source, candidate) || allowUnknownTempCapacity) &&
       this.isSameWorkloadClass(source, candidate) &&
       candidate.vcpusAvailable === source.vcpusAvailable &&
       candidate.memoryGB === source.memoryGB &&
@@ -406,7 +566,9 @@ export class RecommendationEngine {
       (source.acceleratedNetworking !== true || candidate.acceleratedNetworking === true) &&
       (source.rdma !== true || candidate.rdma === true) &&
       this.atLeast(candidate.maxNICs, source.maxNICs) &&
-      (!source.hyperVGenerations.includes('V1') || candidate.hyperVGenerations.includes('V1')) &&
+      (allowUnknownTempCapacity ||
+        !source.hyperVGenerations.includes('V1') ||
+        candidate.hyperVGenerations.includes('V1')) &&
       this.isNewerGeneration(source, candidate)
     );
   }
@@ -417,6 +579,7 @@ export class RecommendationEngine {
     candidate: VmSku,
     os: OperatingSystem,
     allowTempDiskRemoval = false,
+    allowUnknownTempCapacity = false,
   ): Evaluation {
     const checks: CompatibilityCheck[] = [];
     const notes: string[] = [];
@@ -461,18 +624,23 @@ export class RecommendationEngine {
       this.check(
         'vcpus',
         'Same or greater vCPU',
-        true,
+        this.atLeast(candidate.vcpusAvailable, source.vcpusAvailable),
         `${source.vcpusAvailable} → ${candidate.vcpusAvailable} usable vCPU`,
       ),
       this.check(
         'memory',
         'Same or greater RAM',
-        true,
+        this.atLeast(candidate.memoryGB, source.memoryGB),
         `${source.memoryGB} GB → ${candidate.memoryGB} GB`,
       ),
     );
 
-    const localStorageKept = this.localTempDiskCompatible(source, candidate);
+    const localStorageKept = this.localTempDiskCompatible(
+      source,
+      candidate,
+      false,
+      allowUnknownTempCapacity,
+    );
     const tempDiskRemovalAllowed =
       allowTempDiskRemoval && source.profile.localTempDisk && !candidate.profile.localTempDisk;
     const nvmeKept = !source.profile.localNvme || candidate.profile.localNvme;
@@ -651,6 +819,34 @@ export class RecommendationEngine {
     return sameCpu.length > 0 ? sameCpu : candidates;
   }
 
+  /** Mandatory upgrades prioritize documented paths and shape before price. */
+  private rankMigrationCandidates(
+    source: VmSku,
+    candidates: EvaluatedCandidate[],
+  ): EvaluatedCandidate[] {
+    const shapeDistance = (candidate: VmSku): number =>
+      this.expansionDistance(candidate.vcpusAvailable, source.vcpusAvailable) +
+      this.expansionDistance(candidate.memoryGB, source.memoryGB);
+    return candidates
+      .filter(
+        (candidate) =>
+          this.documentedRetirementTransition(source, candidate.vm) !== null ||
+          (this.expansionRatio(candidate.vm.vcpusAvailable, source.vcpusAvailable) <= 4 &&
+            this.expansionRatio(candidate.vm.memoryGB, source.memoryGB) <= 4),
+      )
+      .sort(
+        (left, right) =>
+          Number(this.documentedRetirementTransition(source, left.vm) === null) -
+            Number(this.documentedRetirementTransition(source, right.vm) === null) ||
+          shapeDistance(left.vm) - shapeDistance(right.vm) ||
+          left.hourlyPrice - right.hourlyPrice ||
+          Number(left.vm.lifecycleStatus !== 'current') -
+            Number(right.vm.lifecycleStatus !== 'current') ||
+          (right.vm.seriesVersion ?? 0) - (left.vm.seriesVersion ?? 0) ||
+          left.vm.name.localeCompare(right.vm.name),
+      );
+  }
+
   /** Cheapest first, then closest to the source shape, then the newest series. */
   private byPrice(source: VmSku): (left: EvaluatedCandidate, right: EvaluatedCandidate) => number {
     const distance = (value: number | null, reference: number | null): number =>
@@ -806,6 +1002,39 @@ export class RecommendationEngine {
     );
   }
 
+  private documentedRetirementTransition(
+    source: VmSku,
+    candidate: VmSku,
+  ): 'bv1-to-supported' | 'legacy-to-local-storage' | 'm192-to-mv3' | 'ncv3-to-h100' | null {
+    if (
+      /^standardBSFamily$/i.test(source.family) &&
+      ((candidate.workloadFamily === 'B' && (candidate.seriesVersion ?? 0) >= 2) ||
+        (candidate.workloadFamily === 'D' && (candidate.seriesVersion ?? 0) >= 5))
+    )
+      return 'bv1-to-supported';
+    if (
+      /^(standardGFamily|standardGSFamily|standardLSFamily)$/i.test(source.family) &&
+      candidate.workloadFamily === 'L' &&
+      (candidate.seriesVersion ?? 0) >= 3 &&
+      candidate.profile.localNvme
+    )
+      return 'legacy-to-local-storage';
+    if (
+      /^Standard_M192i(?:d)?(?:m)?s_v2$/i.test(source.name) &&
+      candidate.workloadFamily === 'M' &&
+      candidate.seriesVersion === 3 &&
+      candidate.lifecycleStatus === 'current'
+    )
+      return 'm192-to-mv3';
+    if (
+      /^standardNCSv3Family$/i.test(source.family) &&
+      /^StandardNCadsH100v5Family$/i.test(candidate.family) &&
+      candidate.lifecycleStatus === 'current'
+    )
+      return 'ncv3-to-h100';
+    return null;
+  }
+
   private sameFamilyLineage(source: VmSku, candidate: VmSku): boolean {
     const lineage = (family: string): string =>
       family.replace(/v\d+(?=family$)/i, '').toLowerCase();
@@ -888,11 +1117,22 @@ export class RecommendationEngine {
     return `Local/temp disk ${this.localStorage(candidate)}, ${candidate.maxDataDisks} data disks`;
   }
 
-  private localTempDiskCompatible(source: VmSku, candidate: VmSku, allowRemoval = false): boolean {
+  private localTempDiskCompatible(
+    source: VmSku,
+    candidate: VmSku,
+    allowRemoval = false,
+    allowUnknownCapacity = false,
+  ): boolean {
     if (source.profile.localTempDisk !== candidate.profile.localTempDisk) {
       return allowRemoval && source.profile.localTempDisk && !candidate.profile.localTempDisk;
     }
+    if (allowUnknownCapacity && candidate.profile.localTempDisk && candidate.tempDiskMB === 0)
+      return true;
     return !source.profile.localTempDisk || this.atLeast(candidate.tempDiskMB, source.tempDiskMB);
+  }
+
+  private localTempDiskPresenceCompatible(source: VmSku, candidate: VmSku): boolean {
+    return !source.profile.localTempDisk || candidate.profile.localTempDisk;
   }
 
   /**
@@ -945,6 +1185,16 @@ export class RecommendationEngine {
 
   private atLeast(candidate: number | null, source: number | null): boolean {
     return source === null || (candidate !== null && candidate >= source);
+  }
+
+  private expansionDistance(candidate: number | null, source: number | null): number {
+    if (candidate === null || source === null || source <= 0) return Number.MAX_SAFE_INTEGER;
+    return Math.abs(candidate - source) / source;
+  }
+
+  private expansionRatio(candidate: number | null, source: number | null): number {
+    if (candidate === null || source === null || source <= 0) return Number.POSITIVE_INFINITY;
+    return candidate / source;
   }
 
   private gib(megabytes: number | null): string {

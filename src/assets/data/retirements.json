@@ -3,7 +3,7 @@
     "standardNCSv3Family": {
       "eolDate": "2025-09-30",
       "description": "Azure NCv3-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/ncv3-retirement",
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/ncv3-retirement",
       "regionEolDates": {
         "jioindiawest": "2027-06-30"
       }
@@ -11,114 +11,114 @@
     "standardDFamily": {
       "eolDate": "2028-05-01",
       "description": "Azure D-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardDSFamily": {
       "eolDate": "2028-05-01",
       "description": "Azure Ds-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardDv2Family": {
       "eolDate": "2028-05-01",
       "description": "Azure Dv2-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardDSv2Family": {
       "eolDate": "2028-05-01",
       "description": "Azure Dsv2-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardLSFamily": {
       "eolDate": "2028-05-01",
       "description": "Azure Ls-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardAv2Family": {
       "eolDate": "2028-11-15",
       "description": "Azure Av2 and Amv2-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardBSFamily": {
       "eolDate": "2028-11-15",
       "description": "Azure B-series v1 retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardFFamily": {
       "eolDate": "2028-11-15",
       "description": "Azure F-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardFSFamily": {
       "eolDate": "2028-11-15",
       "description": "Azure Fs-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardFSv2Family": {
       "eolDate": "2028-11-15",
       "description": "Azure Fsv2-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardGFamily": {
       "eolDate": "2028-11-15",
       "description": "Azure G-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardGSFamily": {
       "eolDate": "2028-11-15",
       "description": "Azure Gs-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardLSv2Family": {
       "eolDate": "2028-11-15",
       "description": "Azure Lsv2-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide"
     },
     "standardNVSv3Family": {
       "eolDate": "2026-09-30",
       "description": "Azure NVv3-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/nvv3-series-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/nvv3-series-retirement"
     },
     "standardNVSv4Family": {
       "eolDate": "2026-09-30",
       "description": "Azure NVv4-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/nvv4-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/nvv4-retirement"
     }
   },
   "skus": {
     "Standard_NP10s": {
       "eolDate": "2027-05-31",
       "description": "Azure NP-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/np-series-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/np-series-retirement"
     },
     "Standard_NP20s": {
       "eolDate": "2027-05-31",
       "description": "Azure NP-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/np-series-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/np-series-retirement"
     },
     "Standard_NP40s": {
       "eolDate": "2027-05-31",
       "description": "Azure NP-series retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/np-series-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/np-series-retirement"
     },
     "Standard_M192is_v2": {
       "eolDate": "2027-03-31",
       "description": "Azure Msv2 and Mdsv2 M192 retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/msv2-mdsv2-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/msv2-mdsv2-retirement"
     },
     "Standard_M192ims_v2": {
       "eolDate": "2027-03-31",
       "description": "Azure Msv2 and Mdsv2 M192 retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/msv2-mdsv2-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/msv2-mdsv2-retirement"
     },
     "Standard_M192ids_v2": {
       "eolDate": "2027-03-31",
       "description": "Azure Msv2 and Mdsv2 M192 retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/msv2-mdsv2-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/msv2-mdsv2-retirement"
     },
     "Standard_M192idms_v2": {
       "eolDate": "2027-03-31",
       "description": "Azure Msv2 and Mdsv2 M192 retirement",
-      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/retirement/msv2-mdsv2-retirement"
+      "sourceUrl": "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/msv2-mdsv2-retirement"
     }
   }
 }

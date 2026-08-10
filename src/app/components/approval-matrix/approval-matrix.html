@@ -1,0 +1,270 @@
+<section class="approval" aria-labelledby="approval-title">
+  <div class="approval-heading">
+    <div>
+      <p class="eyebrow">Recommendation QA</p>
+      <h1 id="approval-title">Family approval matrix</h1>
+      <p>
+        One deterministic representative per Azure VM family. Mark each recommendation correct or
+        incorrect, then export the reviewed matrix as an approval-test snapshot.
+      </p>
+    </div>
+    <a class="back-link" href="/">← Advisor</a>
+  </div>
+
+  <form class="matrix-controls" (ngSubmit)="load()">
+    <label>
+      <span>Region</span>
+      <select name="approvalRegion" [(ngModel)]="region">
+        @for (item of regions(); track item.name) {
+          <option [value]="item.name">{{ item.displayName }}</option>
+        }
+      </select>
+    </label>
+    <label>
+      <span>Currency</span>
+      <select name="approvalCurrency" [(ngModel)]="currency">
+        <option value="GBP">GBP</option>
+        <option value="EUR">EUR</option>
+        <option value="USD">USD</option>
+      </select>
+    </label>
+    <label>
+      <span>Operating system</span>
+      <select name="approvalOs" [(ngModel)]="os">
+        <option value="linux">Linux</option>
+        <option value="windows">Windows</option>
+      </select>
+    </label>
+    <label class="check-control">
+      <input type="checkbox" name="approvalBestFit" [(ngModel)]="includeMigrationRecommendations" />
+      <span>Best-fit mandatory migrations</span>
+    </label>
+    @if (os === 'linux') {
+      <label class="check-control">
+        <input type="checkbox" name="approvalKeepTemp" [(ngModel)]="keepTempDisk" />
+        <span>Keep temp disk</span>
+      </label>
+    }
+    <button class="load-button" type="submit" [disabled]="loading()">
+      {{ loading() ? 'Generating…' : 'Generate matrix' }}
+    </button>
+  </form>
+
+  @if (error()) {
+    <p class="matrix-error" role="alert">{{ error() }}</p>
+  }
+
+  @if (results().length > 0) {
+    <div class="matrix-toolbar">
+      <div class="summary" aria-label="Approval progress">
+        <strong>{{ counts().total }} families</strong>
+        <span class="correct">{{ counts().correct }} correct</span>
+        <span class="incorrect">{{ counts().incorrect }} incorrect</span>
+        @if (counts().incorrect > 0) {
+          <span [class.incorrect]="counts().correctionsMissing > 0">
+            {{ counts().correctionsSpecified }}/{{ counts().incorrect }} corrections specified
+          </span>
+        }
+        <span>{{ counts().unreviewed }} unreviewed</span>
+      </div>
+      <div class="toolbar-actions">
+        <div class="filters" aria-label="Filter approvals">
+          @for (item of ['all', 'unreviewed', 'correct', 'incorrect']; track item) {
+            <button
+              type="button"
+              [class.selected]="filter() === item"
+              [attr.aria-pressed]="filter() === item"
+              (click)="filter.set($any(item))"
+            >
+              {{ item }}
+            </button>
+          }
+        </div>
+        <button class="export-button" type="button" (click)="downloadSnapshot()">
+          Download approval JSON
+        </button>
+      </div>
+    </div>
+
+    <p class="matrix-meta">
+      Catalog {{ catalogGeneratedAt() }} · {{ region }} · {{ os }} · {{ currency }}
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="source-column">Source SKU</th>
+            <th>Recommended SKU</th>
+            <th>Outcome</th>
+            <th>Price</th>
+            <th>Review details</th>
+            <th>Approval</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (result of visibleResults(); track family(result)) {
+            <tr
+              [class.review-correct]="decision(result) === 'correct'"
+              [class.review-incorrect]="decision(result) === 'incorrect'"
+            >
+              <td class="source-column">
+                <strong>{{ result.source?.name ?? result.inputSku }}</strong>
+                <span>{{ family(result) }}</span>
+                <small
+                  >{{ result.source?.vcpusAvailable ?? '—' }} vCPU ·
+                  {{ result.source?.memoryGB ?? '—' }} GB ·
+                  {{ result.source?.lifecycleStatus ?? 'unknown' }}</small
+                >
+              </td>
+              <td>
+                <strong>{{ result.recommendation?.vm?.name ?? 'No recommendation' }}</strong>
+                @if (result.recommendation?.vm; as target) {
+                  <span>{{ target.vcpusAvailable }} vCPU · {{ target.memoryGB }} GB</span>
+                  <small>
+                    Temp
+                    {{
+                      target.profile.localTempDisk
+                        ? (target.tempDiskMB ?? 0) / 1024 + ' GB'
+                        : 'none'
+                    }}
+                  </small>
+                }
+              </td>
+              <td>
+                <span class="status">{{ result.status }}</span>
+                <small>{{ result.recommendationType }} · {{ result.confidence }}</small>
+                @if (result.mandatoryUpgrade) {
+                  <small class="mandatory">Mandatory upgrade</small>
+                }
+              </td>
+              <td>
+                <strong>
+                  @if (
+                    result.recommendation?.hourlyPrice !== null &&
+                    result.recommendation?.hourlyPrice !== undefined
+                  ) {
+                    {{
+                      result.recommendation!.hourlyPrice | currency: currency : 'symbol' : '1.4-4'
+                    }}/hr
+                  } @else {
+                    —
+                  }
+                </strong>
+                <small>
+                  Source
+                  @if (price(result) !== null) {
+                    {{ price(result) | currency: currency : 'symbol' : '1.4-4' }}
+                  } @else {
+                    unavailable
+                  }
+                </small>
+                @if (
+                  result.recommendation?.savingPercent !== null &&
+                  result.recommendation?.savingPercent !== undefined
+                ) {
+                  <small
+                    >{{ result.recommendation!.savingPercent | number: '1.1-1' }}% saving</small
+                  >
+                }
+              </td>
+              <td class="details-cell">
+                <details>
+                  <summary>{{ failedChecks(result).length }} failed check(s) · explanation</summary>
+                  <p>{{ result.explanation }}</p>
+                  @if (result.recommendation; as recommendation) {
+                    <div class="check-list">
+                      @for (check of recommendation.checks; track check.id) {
+                        <span [class.failed]="!check.passed" [title]="check.detail">
+                          {{ check.passed ? '✓' : '✕' }} {{ check.label }}
+                        </span>
+                      }
+                    </div>
+                    @if (recommendation.lostCapabilities.length > 0) {
+                      <p><strong>Lost:</strong> {{ recommendation.lostCapabilities.join(', ') }}</p>
+                    }
+                  }
+                </details>
+              </td>
+              <td>
+                <div class="approval-control">
+                  <div class="approval-buttons" [attr.aria-label]="'Review ' + family(result)">
+                    <button
+                      class="correct-button"
+                      type="button"
+                      [class.selected]="decision(result) === 'correct'"
+                      [attr.aria-pressed]="decision(result) === 'correct'"
+                      (click)="setDecision(result, 'correct')"
+                    >
+                      ✓ Correct
+                    </button>
+                    <button
+                      class="incorrect-button"
+                      type="button"
+                      [class.selected]="decision(result) === 'incorrect'"
+                      [attr.aria-pressed]="decision(result) === 'incorrect'"
+                      (click)="setDecision(result, 'incorrect')"
+                    >
+                      ✕ Incorrect
+                    </button>
+                  </div>
+                  @if (decision(result) === 'incorrect') {
+                    <label class="correction-field">
+                      <span>Correct recommendation</span>
+                      <input
+                        class="correction-search"
+                        type="search"
+                        placeholder="Search SKU or family…"
+                        [attr.aria-label]="
+                          'Search correct recommendations for ' +
+                          (result.source?.name ?? result.inputSku)
+                        "
+                        [ngModel]="correctionSearch(result)"
+                        (ngModelChange)="setCorrectionSearch(result, $event)"
+                        [ngModelOptions]="{ standalone: true }"
+                      />
+                      <select
+                        [attr.aria-label]="
+                          'Correct recommendation for ' + (result.source?.name ?? result.inputSku)
+                        "
+                        aria-required="true"
+                        [attr.aria-invalid]="correction(result) === ''"
+                        [attr.aria-describedby]="
+                          correction(result) === '' ? 'correction-help-' + result.inputSku : null
+                        "
+                        [class.missing]="correction(result) === ''"
+                        [ngModel]="correction(result)"
+                        (ngModelChange)="setCorrection(result, $event)"
+                        [ngModelOptions]="{ standalone: true }"
+                      >
+                        <option value="">Select expected result…</option>
+                        <option [value]="noRecommendationValue">No automatic recommendation</option>
+                        @for (sku of correctionOptions(result); track sku.name) {
+                          <option [value]="sku.name">{{ sku.name }}</option>
+                        }
+                      </select>
+                      @if (
+                        correctionSearch(result) !== '' && correctionOptions(result).length === 0
+                      ) {
+                        <small class="search-empty">No matching regional SKUs</small>
+                      }
+                      @if (correction(result) === '') {
+                        <small [id]="'correction-help-' + result.inputSku">
+                          Required for the approval snapshot
+                        </small>
+                      }
+                    </label>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (visibleResults().length === 0) {
+      <p class="empty-filter">No families match this approval filter.</p>
+    }
+  }
+</section>

@@ -163,6 +163,7 @@ h2 {
 }
 .vm,
 .summary-cell {
+  align-self: start;
   display: flex;
   flex-direction: column;
   min-width: 0;

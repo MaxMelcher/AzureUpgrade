@@ -81,6 +81,25 @@ Open `http://localhost:4200`.
 
 `npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux-family.csv`. It contains one representative VM per UK South family for Linux, including the resulting recommendation state and source lifecycle status, using the exact same engine as the application.
 
+### Approval matrix
+
+Open `http://localhost:4200/?view=approval` to review one deterministic representative VM from every
+Azure resource SKU family. Select the region, currency, operating system, mandatory-migration mode,
+and Linux temp-disk policy, then generate the matrix. Each row includes the selected recommendation,
+prices, lifecycle outcome, failed compatibility checks, capability losses, and full explanation.
+
+Mark each row **Correct** or **Incorrect**. Incorrect rows require a **Correct recommendation** from
+the regional catalog, or an explicit **No automatic recommendation** selection. Decisions and
+corrections are stored locally in the browser and are keyed by the complete recommendation identity
+and matrix configuration, so a changed recommendation is automatically unreviewed. Use the status
+filters to focus on unreviewed or rejected rows.
+
+**Download approval JSON** exports a stable, sorted snapshot suitable for checking into source
+control and comparing in approval/snapshot tests. It intentionally excludes the export time and
+catalog refresh timestamp; only the matrix configuration, recommendation results, compatibility
+details, verdicts, and expected corrections participate in diffs. Schema version 2 distinguishes an
+expected SKU from an explicit expectation that no automatic recommendation should be produced.
+
 ## Static hosting
 
 The production output is `dist/azure-vm-upgrade-advisor/browser`. Deploy that folder to Azure Static Web Apps or any static file host. `public/staticwebapp.config.json` supplies the static MIME types and fallback behavior.
