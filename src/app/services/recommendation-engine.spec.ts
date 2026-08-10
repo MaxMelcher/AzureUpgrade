@@ -854,7 +854,7 @@ describe('RecommendationEngine compatibility rules', () => {
     });
 
     const strict = run(source, [source, exactMigration, strictOversize]);
-    const bestFit = run(source, [source, exactMigration, strictOversize], 'linux', true);
+    const bestFit = run(source, [source, exactMigration, strictOversize], 'linux', true, false);
 
     expect(strict.recommendation).toBeNull();
     expect(strict.status).toBe('manual-migration-required');
@@ -899,10 +899,63 @@ describe('RecommendationEngine compatibility rules', () => {
       prices: prices(1.1),
     });
 
-    const result = run(source, [source, target], 'linux', true);
+    const result = run(source, [source, target], 'linux', true, false);
 
     expect(result.recommendation?.vm.name).toBe(target.name);
     expect(result.status).toBe('lifecycle-replacement');
+  });
+
+  it('keeps the A1 v2 temp disk during mandatory migration unless explicitly disabled', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_A1_v2',
+      family: 'standardAv2Family',
+      workloadFamily: 'A',
+      seriesVersion: 2,
+      cpuGeneration: 1,
+      vcpus: 1,
+      vcpusAvailable: 1,
+      memoryGB: 2,
+      tempDiskMB: 10240,
+      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      lifecycleStatus: 'retirementAnnounced',
+      retirement: {
+        eolDate: '2028-08-31',
+        description: 'Retirement announced',
+        sourceUrl: 'https://learn.microsoft.com/',
+      },
+      prices: prices(0.03),
+    });
+    const withoutTempDisk = vm({
+      ...intel,
+      name: 'Standard_D2ls_v5',
+      family: 'standardDLSv5Family',
+      workloadFamily: 'D',
+      seriesVersion: 5,
+      cpuGeneration: 4,
+      vcpus: 2,
+      vcpusAvailable: 2,
+      memoryGB: 4,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(0.07),
+    });
+    const withTempDisk = vm({
+      ...withoutTempDisk,
+      name: 'Standard_D2lds_v5',
+      family: 'standardDLDSv5Family',
+      tempDiskMB: 76800,
+      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      prices: prices(0.08),
+    });
+
+    const keep = run(source, [source, withoutTempDisk, withTempDisk], 'linux', true, true);
+    const remove = run(source, [source, withoutTempDisk, withTempDisk], 'linux', true, false);
+
+    expect(keep.recommendation?.vm.name).toBe(withTempDisk.name);
+    expect(keep.recommendation?.lostCapabilities).not.toContain('local/temp disk');
+    expect(remove.recommendation?.vm.name).toBe(withoutTempDisk.name);
+    expect(remove.recommendation?.lostCapabilities).toContain('local/temp disk');
   });
 
   it('modernizes a previous-generation exact shape when the source price is unavailable', () => {

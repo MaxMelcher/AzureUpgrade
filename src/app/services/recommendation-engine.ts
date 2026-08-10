@@ -95,14 +95,19 @@ export class RecommendationEngine {
     const modernizationCandidates: EvaluatedCandidate[] = [];
     const includeMigrationRecommendations =
       mandatoryUpgrade && options.includeMigrationRecommendations === true;
-    const allowTempDiskRemoval =
-      os === 'linux' && !mandatoryUpgrade && options.keepTempDisk === false;
+    const keepTempDisk = os !== 'linux' || options.keepTempDisk !== false;
+    const allowTempDiskRemoval = os === 'linux' && !mandatoryUpgrade && !keepTempDisk;
     for (const candidate of this.catalog.skus) {
       const rejection = this.rejectionReason(source, candidate, os, allowTempDiskRemoval);
       const migrationEligible =
         includeMigrationRecommendations &&
-        this.migrationRejectionReason(source, candidate, os) === null;
-      const modernizationEligible = this.isModernizationCandidate(source, candidate, os);
+        this.migrationRejectionReason(source, candidate, os, keepTempDisk) === null;
+      const modernizationEligible = this.isModernizationCandidate(
+        source,
+        candidate,
+        os,
+        keepTempDisk,
+      );
       if (rejection && !migrationEligible && !modernizationEligible) {
         rejected[rejection]++;
         continue;
@@ -345,6 +350,7 @@ export class RecommendationEngine {
     source: VmSku,
     candidate: VmSku,
     os: OperatingSystem,
+    keepTempDisk = true,
   ): RejectionReason | 'processorDomain' | 'specializedProfile' | null {
     if (candidate.name === source.name) return 'sourceSku';
     if (
@@ -367,6 +373,7 @@ export class RecommendationEngine {
     if (!this.atLeast(candidate.memoryGB, source.memoryGB)) return 'memory';
     if (this.isConstrained(source) !== this.isConstrained(candidate)) return 'constrainedShape';
     if (source.profile.burstable !== candidate.profile.burstable) return 'burstableClass';
+    if (keepTempDisk && !this.localTempDiskCompatible(source, candidate)) return 'localStorage';
     if (!this.isSameAccelerator(source, candidate)) return 'accelerator';
     if (
       source.profile.confidential !== candidate.profile.confidential ||
@@ -380,10 +387,15 @@ export class RecommendationEngine {
     return null;
   }
 
-  private isModernizationCandidate(source: VmSku, candidate: VmSku, os: OperatingSystem): boolean {
+  private isModernizationCandidate(
+    source: VmSku,
+    candidate: VmSku,
+    os: OperatingSystem,
+    keepTempDisk: boolean,
+  ): boolean {
     return (
       source.lifecycleStatus === 'previousGeneration' &&
-      this.migrationRejectionReason(source, candidate, os) === null &&
+      this.migrationRejectionReason(source, candidate, os, keepTempDisk) === null &&
       this.sameFamilyLineage(source, candidate) &&
       this.isSameWorkloadClass(source, candidate) &&
       candidate.vcpusAvailable === source.vcpusAvailable &&
