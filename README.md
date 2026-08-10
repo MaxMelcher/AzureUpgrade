@@ -74,12 +74,18 @@ npm install
 npm test
 npm run build
 npm run qa:recommendations
+npm run qa:compare-engines
 npm start
 ```
 
 Open `http://localhost:4200`.
 
 `npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux-family.csv`. It contains one representative VM per UK South family for Linux, including the resulting recommendation state and source lifecycle status, using the exact same engine as the application.
+
+`npm run qa:compare-engines` writes `quality-check/engine-comparison-uksouth-linux.csv`. It runs the
+simplified, rule-based `SimpleRecommendationEngine` (six declarative rules plus one reduction) next
+to the current engine on the same representatives. `quality-check/ENGINE-COMPARISON.md` summarizes
+the agreement rate and the reason for every class of difference.
 
 ### Approval matrix
 

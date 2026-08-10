@@ -10,8 +10,10 @@
   },
   "include": [
     "tools/Generate-RecommendationMatrix.ts",
+    "tools/Compare-RecommendationEngines.ts",
     "src/app/models/vm.models.ts",
     "src/app/services/recommendation-engine.ts",
+    "src/app/services/simple-recommendation-engine.ts",
     "src/app/services/cpu-metadata.ts",
     "src/app/services/retirement-metadata.ts",
     "src/app/services/workload-metadata.ts"
