@@ -37,6 +37,7 @@ export class ResultsListComponent {
   public readonly downloadCsv = output<void>();
   public readonly downloadMatrix = output<void>();
   protected readonly expanded = signal(new Set<string>());
+  protected readonly collapsedGroups = signal(new Set<string>());
   protected readonly resultGroups = computed<ResultGroup[]>(() => {
     const sorted = [...this.results()].sort(
       (left, right) =>
@@ -48,6 +49,12 @@ export class ResultsListComponent {
 
     return [
       {
+        key: 'cost',
+        title: 'Cost optimizations',
+        description: 'Fully compatible replacements that are at least 5% cheaper.',
+        results: inState('recommended').filter((result) => !result.mandatoryUpgrade),
+      },
+      {
         key: 'lifecycle',
         title: 'Lifecycle replacements',
         description:
@@ -58,12 +65,6 @@ export class ResultsListComponent {
             result.status === 'lifecycle-replacement' ||
             result.status === 'manual-migration-required',
         ),
-      },
-      {
-        key: 'cost',
-        title: 'Cost optimizations',
-        description: 'Fully compatible replacements that are at least 5% cheaper.',
-        results: inState('recommended').filter((result) => !result.mandatoryUpgrade),
       },
       {
         key: 'keep',
@@ -96,6 +97,12 @@ export class ResultsListComponent {
     const updated = new Set(this.expanded());
     updated.has(sku) ? updated.delete(sku) : updated.add(sku);
     this.expanded.set(updated);
+  }
+
+  protected toggleGroup(groupKey: string): void {
+    const updated = new Set(this.collapsedGroups());
+    updated.has(groupKey) ? updated.delete(groupKey) : updated.add(groupKey);
+    this.collapsedGroups.set(updated);
   }
 
   protected price(result: RecommendationResult, vm: VmSku): number | null {

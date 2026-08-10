@@ -69,6 +69,29 @@ h2 {
   font-size: 16px;
   margin: 0;
 }
+.group-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 7px;
+  padding: 2px 0;
+}
+.group-toggle:hover {
+  color: var(--azure);
+}
+.group-toggle:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 3px;
+}
+.group-chevron {
+  color: var(--azure);
+  font-size: 20px;
+  line-height: 0.7;
+}
 .group-heading p {
   color: var(--muted);
   font-size: 12px;

@@ -19,18 +19,35 @@
       <section class="result-group" [attr.aria-labelledby]="'group-' + group.key">
         <div class="group-heading">
           <div>
-            <h3 [id]="'group-' + group.key">{{ group.title }}</h3>
+            <h3 [id]="'group-' + group.key">
+              <button
+                class="group-toggle"
+                type="button"
+                (click)="toggleGroup(group.key)"
+                [attr.aria-controls]="'group-results-' + group.key"
+                [attr.aria-expanded]="!collapsedGroups().has(group.key)"
+                [attr.aria-label]="
+                  (collapsedGroups().has(group.key) ? 'Expand ' : 'Collapse ') + group.title
+                "
+              >
+                <span class="group-chevron" aria-hidden="true">{{
+                  collapsedGroups().has(group.key) ? '›' : '⌄'
+                }}</span>
+                {{ group.title }}
+              </button>
+            </h3>
             <p>{{ group.description }}</p>
           </div>
           <span>{{ group.results.length }}</span>
         </div>
-        <div class="result-list">
-          @for (result of group.results; track result.inputSku) {
-            <article
-              class="result-card"
-              [class.not-found]="result.status !== 'recommended'"
-              [class.mandatory]="result.mandatoryUpgrade"
-            >
+        @if (!collapsedGroups().has(group.key)) {
+          <div class="result-list" [id]="'group-results-' + group.key">
+            @for (result of group.results; track result.inputSku) {
+              <article
+                class="result-card"
+                [class.not-found]="result.status !== 'recommended'"
+                [class.mandatory]="result.mandatoryUpgrade"
+              >
               <div class="result-summary">
                 <button
                   class="expand-button"
@@ -374,9 +391,10 @@
                   }
                 </div>
               }
-            </article>
-          }
-        </div>
+              </article>
+            }
+          </div>
+        }
       </section>
     }
   </div>
