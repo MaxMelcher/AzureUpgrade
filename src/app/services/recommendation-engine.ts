@@ -105,7 +105,7 @@ export class RecommendationEngine {
           sourcePrice !== null && sourcePrice > 0
             ? ((sourcePrice - hourlyPrice) / sourcePrice) * 100
             : null,
-        ...this.evaluate(source, candidate),
+        ...this.evaluate(source, candidate, os),
       });
     }
 
@@ -263,8 +263,7 @@ export class RecommendationEngine {
     if (this.hasAccelerator(source) && !this.atLeast(candidate.gpus, source.gpus))
       return 'accelerator';
     if (
-      source.profile.localTempDisk !== candidate.profile.localTempDisk ||
-      !this.atLeast(candidate.tempDiskMB, source.tempDiskMB) ||
+      !this.localTempDiskCompatible(source, candidate, os) ||
       (source.profile.localNvme && !candidate.profile.localNvme) ||
       (source.profile.storageBandwidthOptimized && !candidate.profile.storageBandwidthOptimized) ||
       !this.atLeast(candidate.maxDataDisks, source.maxDataDisks)
@@ -282,7 +281,7 @@ export class RecommendationEngine {
   }
 
   /** Classifies a surviving candidate and produces the comparison badges shown in the UI. */
-  private evaluate(source: VmSku, candidate: VmSku): Evaluation {
+  private evaluate(source: VmSku, candidate: VmSku, os: OperatingSystem): Evaluation {
     const checks: CompatibilityCheck[] = [];
     const notes: string[] = [];
     const manual: string[] = [];
@@ -337,9 +336,7 @@ export class RecommendationEngine {
       ),
     );
 
-    const localStorageKept =
-      (!source.profile.localTempDisk || candidate.profile.localTempDisk) &&
-      (candidate.tempDiskMB ?? 0) >= (source.tempDiskMB ?? 0);
+    const localStorageKept = this.localTempDiskCompatible(source, candidate, os);
     const nvmeKept = !source.profile.localNvme || candidate.profile.localNvme;
     const storageBandwidthKept =
       !source.profile.storageBandwidthOptimized || candidate.profile.storageBandwidthOptimized;
@@ -350,7 +347,7 @@ export class RecommendationEngine {
         'storage',
         'Storage requirements preserved',
         storagePassed,
-        this.storageDetail(source, candidate, {
+        this.storageDetail(source, candidate, os, {
           localStorageKept,
           nvmeKept,
           storageBandwidthKept,
@@ -461,7 +458,7 @@ export class RecommendationEngine {
       resourceDifference: { usableVcpus: 0, memoryGB: 0 },
       lostCapabilities: [],
       gainedCapabilities: [],
-      checks: this.evaluate(source, source).checks,
+      checks: this.evaluate(source, source, os).checks,
       notes: [],
     };
   }
@@ -721,6 +718,7 @@ export class RecommendationEngine {
   private storageDetail(
     source: VmSku,
     candidate: VmSku,
+    os: OperatingSystem,
     kept: {
       localStorageKept: boolean;
       nvmeKept: boolean;
@@ -732,9 +730,16 @@ export class RecommendationEngine {
     if (!kept.storageBandwidthKept) return 'Storage-bandwidth optimization is not preserved';
     if (!kept.localStorageKept)
       return `Local/temp disk ${this.localStorage(source)} → ${this.localStorage(candidate)}`;
+    if (source.profile.localTempDisk !== candidate.profile.localTempDisk && os === 'linux')
+      return `Linux resize supports local/temp disk ${this.localStorage(source)} → ${this.localStorage(candidate)}`;
     if (!kept.dataDisksKept)
       return `Data disk limit ${source.maxDataDisks} → ${candidate.maxDataDisks}`;
     return `Local/temp disk ${this.localStorage(candidate)}, ${candidate.maxDataDisks} data disks`;
+  }
+
+  private localTempDiskCompatible(source: VmSku, candidate: VmSku, os: OperatingSystem): boolean {
+    if (source.profile.localTempDisk !== candidate.profile.localTempDisk) return os === 'linux';
+    return !source.profile.localTempDisk || this.atLeast(candidate.tempDiskMB, source.tempDiskMB);
   }
 
   /**

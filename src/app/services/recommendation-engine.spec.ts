@@ -188,11 +188,63 @@ describe('RecommendationEngine compatibility rules', () => {
       prices: prices(0.08),
     });
 
-    const result = run(source, [source, withoutTempDisk]);
+    const result = run(source, [source, withoutTempDisk], 'windows');
 
     expect(result.status).toBe('keep');
     expect(result.recommendation?.vm.name).toBe(source.name);
     expect(result.rejected.localStorage).toBe(1);
+  });
+
+  it('recommends E32_v5 for Linux when v4 and v5 are equally cheaper without a temp disk', () => {
+    const source = vm({
+      ...intel,
+      name: 'Standard_E32_v3',
+      family: 'standardEv3Family',
+      workloadFamily: 'E',
+      seriesVersion: 3,
+      cpuGeneration: 2,
+      vcpus: 32,
+      vcpusAvailable: 32,
+      memoryGB: 256,
+      tempDiskMB: 819200,
+      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      prices: prices(1.891),
+    });
+    const v4 = vm({
+      ...intel,
+      name: 'Standard_E32_v4',
+      family: 'standardEv4Family',
+      workloadFamily: 'E',
+      seriesVersion: 4,
+      cpuGeneration: 3,
+      vcpus: 32,
+      vcpusAvailable: 32,
+      memoryGB: 256,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(1.794),
+    });
+    const v5 = vm({
+      ...intel,
+      name: 'Standard_E32_v5',
+      family: 'standardEv5Family',
+      workloadFamily: 'E',
+      seriesVersion: 5,
+      cpuGeneration: 4,
+      vcpus: 32,
+      vcpusAvailable: 32,
+      memoryGB: 256,
+      tempDiskMB: 0,
+      profile: { ...EMPTY_PROFILE },
+      prices: prices(1.794),
+    });
+
+    const result = run(source, [source, v4, v5]);
+
+    expect(result.status).toBe('recommended');
+    expect(result.recommendation?.vm.name).toBe(v5.name);
+    expect(result.recommendation?.savingPercent).toBeCloseTo(5.13, 2);
+    expect(result.recommendation?.checks.every((check) => check.passed)).toBe(true);
   });
 
   it('recommends a same-architecture newer generation (E2ps_v5 → E2ps_v6)', () => {
@@ -619,10 +671,10 @@ describe('RecommendationEngine compatibility rules', () => {
   });
 });
 
-function run(source: VmSku, skus: VmSku[]): RecommendationResult {
-  return new RecommendationEngine(region(skus)).findRecommendations(
-    source.name,
-    'westeurope',
-    'linux',
-  );
+function run(
+  source: VmSku,
+  skus: VmSku[],
+  os: 'linux' | 'windows' = 'linux',
+): RecommendationResult {
+  return new RecommendationEngine(region(skus)).findRecommendations(source.name, 'westeurope', os);
 }
