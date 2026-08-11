@@ -246,6 +246,35 @@ footer {
   white-space: nowrap;
 }
 
+.price-period {
+  background: var(--details);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: inline-flex;
+  padding: 2px;
+}
+.price-period button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 9px;
+  text-transform: capitalize;
+}
+.price-period button.selected {
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--azure);
+}
+.price-period button:focus-visible {
+  outline: 2px solid var(--azure);
+  outline-offset: 1px;
+}
+
 @media (max-width: 600px) {
   .shell {
     padding-left: 15px;

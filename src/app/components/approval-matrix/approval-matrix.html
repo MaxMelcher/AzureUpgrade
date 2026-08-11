@@ -35,12 +35,27 @@
         <option value="windows">Windows</option>
       </select>
     </label>
+    <label>
+      <span>Price period</span>
+      <select name="approvalPricePeriod" [(ngModel)]="pricePeriod">
+        <option value="hourly">Hourly</option>
+        <option value="monthly">Monthly · 730 hours</option>
+        <option value="yearly">Yearly · 8,760 hours</option>
+      </select>
+    </label>
     @if (os === 'linux') {
       <label class="check-control">
         <input type="checkbox" name="approvalKeepTempDisk" [(ngModel)]="keepTempDisk" />
         <span>Keep temp disk</span>
       </label>
     }
+    <label
+      class="check-control"
+      title="Cross-vendor migrations potentially require further workload and performance testing."
+    >
+      <input type="checkbox" name="approvalKeepCpuVendor" [(ngModel)]="keepCpuVendor" />
+      <span>Keep Intel/AMD</span>
+    </label>
     <button class="load-button" type="submit" [disabled]="loading()">
       {{ loading() ? 'Generating…' : 'Generate matrix' }}
     </button>
@@ -82,7 +97,7 @@
             <th class="source-column">Source SKU</th>
             <th>Recommended SKU</th>
             <th>Outcome</th>
-            <th>Price</th>
+            <th>Price · {{ pricePeriod }}</th>
             <th>Reason</th>
             <th>Approval</th>
           </tr>
@@ -129,13 +144,13 @@
               <td>
                 <strong>
                   @if (result.targetHourlyPrice !== null) {
-                    {{ result.targetHourlyPrice | currency: currency : 'symbol' : '1.4-4' }}/hr
+                    {{ displayPrice(result.targetHourlyPrice) | currency: currency : 'symbol' : priceDigits() }}
                   } @else { — }
                 </strong>
                 <small>
                   Source
                   @if (result.sourceHourlyPrice !== null) {
-                    {{ result.sourceHourlyPrice | currency: currency : 'symbol' : '1.4-4' }}
+                    {{ displayPrice(result.sourceHourlyPrice) | currency: currency : 'symbol' : priceDigits() }}
                   } @else { unavailable }
                 </small>
                 @if (result.savingPercent !== null) {

@@ -41,6 +41,7 @@ export interface CompatibilityRule {
     candidate: VmSku,
     os: OperatingSystem,
     keepTempDisk: boolean,
+    keepCpuVendor: boolean,
   ) => boolean;
 }
 
@@ -138,12 +139,12 @@ export const COMPATIBILITY_RULES: readonly CompatibilityRule[] = [
   },
   {
     id: 'processor',
-    label: 'Same CPU vendor and architecture',
-    passes: (source, candidate) =>
-      source.cpuVendor !== null &&
+    label: 'Same CPU architecture and optional vendor retention',
+    passes: (source, candidate, _os, _keepTempDisk, keepCpuVendor) =>
       source.cpuArchitecture !== null &&
-      source.cpuVendor === candidate.cpuVendor &&
-      source.cpuArchitecture === candidate.cpuArchitecture,
+      source.cpuArchitecture === candidate.cpuArchitecture &&
+      (!keepCpuVendor ||
+        (source.cpuVendor !== null && source.cpuVendor === candidate.cpuVendor)),
   },
   {
     id: 'workloadType',
@@ -191,6 +192,7 @@ export class SimpleRecommendationEngine {
     sourceVm: string,
     os: OperatingSystem = 'linux',
     keepTempDisk = true,
+    keepCpuVendor = true,
   ): SimpleRecommendation {
     const source = this.skuLookup.get(sourceVm.trim().toLowerCase()) ?? null;
     if (!source) {
@@ -199,7 +201,9 @@ export class SimpleRecommendationEngine {
 
     const sourcePrice = priceOf(source, os);
     const candidates = this.catalog.skus.filter((candidate) =>
-      COMPATIBILITY_RULES.every((rule) => rule.passes(source, candidate, os, keepTempDisk)),
+      COMPATIBILITY_RULES.every((rule) =>
+        rule.passes(source, candidate, os, keepTempDisk, keepCpuVendor),
+      ),
     );
     const alternatives = candidates.filter((candidate) => candidate.name !== source.name);
     if (candidates.length === 0) {
@@ -277,6 +281,7 @@ export class SimpleRecommendationEngine {
   private isBetter(source: VmSku, candidate: VmSku, best: VmSku, os: OperatingSystem): boolean {
     const order =
       sizePenalty(source, candidate) - sizePenalty(source, best) ||
+      Number(candidate.cpuVendor !== source.cpuVendor) - Number(best.cpuVendor !== source.cpuVendor) ||
       priceOf(candidate, os)! - priceOf(best, os)! ||
       generationOf(best) - generationOf(candidate) ||
       candidate.name.localeCompare(best.name);

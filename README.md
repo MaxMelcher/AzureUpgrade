@@ -11,7 +11,7 @@ one candidate reduction, and three outcomes: EOL migration, cost optimization, o
 - Regional, case-insensitive lookup for pasted VM lists
 - Linux and Windows PAYG recommendations in USD, EUR, or GBP
 - Seven named compatibility rules cover availability, lifecycle, generation, processor, workload type, required capabilities, and minimum resources
-- CPU vendor and architecture are hard constraints
+- CPU architecture is a hard constraint; same-vendor targets are preferred while supported cross-vendor replacements remain eligible
 - Workload family, burstable class, and isolation class are preserved
 - Requires an exact usable vCPU and memory match and never proposes a retired or retiring size
 - GPU, RDMA, confidential-computing, and Premium IO capabilities are preserved; Linux can optionally drop its local temp disk while Windows must keep matching temp-disk presence
@@ -93,8 +93,8 @@ filters to focus on unreviewed or rejected rows.
 **Download approval JSON** exports a stable, sorted snapshot suitable for checking into source
 control and comparing in approval/snapshot tests. It intentionally excludes the export time and
 catalog refresh timestamp; only the matrix configuration, recommendation results, verdicts, and
-expected corrections participate in diffs. Schema version 6 identifies snapshots from the
-declarative engine, records the temp-disk policy and compatible candidate names, includes family-specific official migration guidance, and distinguishes an
+expected corrections participate in diffs. Schema version 7 identifies snapshots from the
+declarative engine, records the temp-disk and CPU-vendor policies plus compatible candidate names, includes family-specific official migration guidance, and distinguishes an
 expected SKU from an explicit expectation that no automatic recommendation should be produced.
 
 ## Static hosting

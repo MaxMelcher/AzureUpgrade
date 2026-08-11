@@ -166,7 +166,12 @@ export class App implements OnInit {
         this.currencyCode.set(catalog.currencyCode);
         this.results.set(
           request.skus.map((sku) =>
-            this.engine!.recommend(sku, request.os, request.keepTempDisk),
+            this.engine!.recommend(
+              sku,
+              request.os,
+              request.keepTempDisk,
+              request.keepCpuVendor,
+            ),
           ),
         );
         this.busy.set(false);
@@ -202,6 +207,7 @@ export class App implements OnInit {
           sku.name,
           this.lastRequest!.os,
           this.lastRequest!.keepTempDisk,
+          this.lastRequest!.keepCpuVendor,
         ),
       );
       this.exportService.downloadQualityMatrix(

@@ -18,7 +18,7 @@ import {
 } from './retirement-metadata';
 import { EMPTY_PROFILE, prices, region, vm } from './vm.fixtures';
 import { applyWorkloadMetadata } from './workload-metadata';
-import { SimpleRecommendationEngine } from './simple-recommendation-engine';
+import { COMPATIBILITY_RULES, SimpleRecommendationEngine } from './simple-recommendation-engine';
 
 const run = (source: VmSku, skus: VmSku[]) =>
   new SimpleRecommendationEngine(region(skus)).recommend(source.name, 'linux');
@@ -67,6 +67,43 @@ describe('SimpleRecommendationEngine', () => {
       migrationGuideUrl:
         'https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide',
     });
+  });
+
+  it('does not recommend retirement-announced Standard_F16s_v2 for Standard_F16s', () => {
+    const source = ukSouthGbpCatalog.skus.find((sku) => sku.name === 'Standard_F16s');
+    const fsv2 = ukSouthGbpCatalog.skus.find((sku) => sku.name === 'Standard_F16s_v2');
+
+    expect(source).toBeDefined();
+    expect(fsv2).toBeDefined();
+    expect(fsv2).toMatchObject({
+      vcpusAvailable: source!.vcpusAvailable,
+      memoryGB: source!.memoryGB,
+      cpuVendor: source!.cpuVendor,
+      cpuArchitecture: source!.cpuArchitecture,
+      lifecycleStatus: 'retirementAnnounced',
+    });
+    expect(fsv2!.prices.linuxPaygHourly).toBe(0.6121);
+    expect(source!.prices.linuxPaygHourly).toBe(0.6887);
+
+    const lifecycleRule = COMPATIBILITY_RULES.find((rule) => rule.id === 'lifecycle');
+    expect(lifecycleRule).toBeDefined();
+    expect(lifecycleRule!.passes(source!, fsv2!, 'linux', true, true)).toBe(false);
+
+    const result = new SimpleRecommendationEngine(ukSouthGbpCatalog).recommend(
+      source!.name,
+      'linux',
+      false,
+      false,
+    );
+    expect(result.compatibleCandidates).not.toContain(fsv2!.name);
+    expect(result.targetVm).not.toBe(fsv2!.name);
+    expect(result.compatibleCandidates).toEqual(
+      expect.arrayContaining(['Standard_F16als_v6', 'Standard_F16als_v7']),
+    );
+    expect(result.compatibleCandidates).not.toContain('Standard_F16as_v6');
+    expect(result.compatibleCandidates).not.toContain('Standard_F16as_v7');
+    expect(result.targetVm).toBe('Standard_F16als_v7');
+    expect(result.outcome).toBe('eol-migration');
   });
 
   it('keeps Standard_D2s_v3 when Keep Temp Disk is enabled', () => {
@@ -259,7 +296,7 @@ describe('SimpleRecommendationEngine', () => {
     expect(result.targetVm).toBe(source.name);
   });
 
-  it('never crosses the CPU vendor or the workload type', () => {
+  it('allows a different CPU vendor on the same architecture but prefers the source vendor', () => {
     const source = vm({ ...base, name: 'Standard_D2s_v5', seriesVersion: 5, prices: prices(0.1) });
     const amd = vm({
       ...base,
@@ -276,11 +313,27 @@ describe('SimpleRecommendationEngine', () => {
       seriesVersion: 6,
       prices: prices(0.05),
     });
+    const arm = vm({
+      ...base,
+      name: 'Standard_D2ps_v6',
+      cpuVendor: 'Ampere',
+      cpuArchitecture: 'arm64',
+      architecture: 'arm64',
+      seriesVersion: 6,
+      prices: prices(0.04),
+    });
 
-    const result = run(source, [source, amd, memoryOptimized]);
+    const keepVendor = run(source, [source, amd, memoryOptimized, arm]);
+    const result = new SimpleRecommendationEngine(
+      region([source, amd, memoryOptimized, arm]),
+    ).recommend(source.name, 'linux', true, false);
 
+    expect(keepVendor.compatibleCandidates).not.toContain('Standard_D2as_v6');
     expect(result.outcome).toBe('keep');
     expect(result.targetVm).toBe('Standard_D2s_v5');
+    expect(result.compatibleCandidates).toContain('Standard_D2as_v6');
+    expect(result.compatibleCandidates).not.toContain('Standard_E2s_v6');
+    expect(result.compatibleCandidates).not.toContain('Standard_D2ps_v6');
   });
 
   it('migrates an EOL source even when the replacement is not cheaper', () => {

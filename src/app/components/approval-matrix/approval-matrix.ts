@@ -11,6 +11,13 @@ import {
 
 type ApprovalDecision = 'correct' | 'incorrect';
 type ApprovalFilter = 'all' | 'unreviewed' | ApprovalDecision;
+type PricePeriod = 'hourly' | 'monthly' | 'yearly';
+
+const HOURS_BY_PERIOD: Record<PricePeriod, number> = {
+  hourly: 1,
+  monthly: 730,
+  yearly: 8760,
+};
 
 @Component({
   selector: 'app-approval-matrix',
@@ -30,7 +37,9 @@ export class ApprovalMatrixComponent {
   protected region = 'uksouth';
   protected currency: CurrencyCode = 'GBP';
   protected os: OperatingSystem = 'linux';
+  protected pricePeriod: PricePeriod = 'hourly';
   protected keepTempDisk = true;
+  protected keepCpuVendor = true;
   protected readonly loading = signal(false);
   protected readonly error = signal('');
   protected readonly catalogGeneratedAt = signal('');
@@ -88,6 +97,7 @@ export class ApprovalMatrixComponent {
       }
       if (requestedOs === 'linux' || requestedOs === 'windows') this.os = requestedOs;
       this.keepTempDisk = query.get('keepTempDisk') !== 'false';
+      this.keepCpuVendor = query.get('keepCpuVendor') !== 'false';
       this.load();
     });
   }
@@ -108,6 +118,7 @@ export class ApprovalMatrixComponent {
               sku.name,
               this.os,
               this.os === 'linux' ? this.keepTempDisk : true,
+              this.keepCpuVendor,
             ),
           ),
         );
@@ -193,15 +204,24 @@ export class ApprovalMatrixComponent {
     return this.source(result)?.family ?? 'Unknown family';
   }
 
+  protected displayPrice(hourlyPrice: number | null): number | null {
+    return hourlyPrice === null ? null : hourlyPrice * HOURS_BY_PERIOD[this.pricePeriod];
+  }
+
+  protected priceDigits(): string {
+    return this.pricePeriod === 'hourly' ? '1.4-4' : '1.2-2';
+  }
+
   protected downloadSnapshot(): void {
     const snapshot = {
-      schemaVersion: 6,
+      schemaVersion: 7,
       engine: 'declarative-rule-based',
       configuration: {
         region: this.region,
         currency: this.currency,
         os: this.os,
         keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
+        keepCpuVendor: this.keepCpuVendor,
       },
       summary: this.counts(),
       rows: this.results().map((result) => {
@@ -248,6 +268,7 @@ export class ApprovalMatrixComponent {
       this.currency,
       this.os,
       Number(this.os === 'linux' ? this.keepTempDisk : true),
+      Number(this.keepCpuVendor),
       this.family(result),
       result.sourceVm,
       this.target(result)?.name ?? 'none',
@@ -262,6 +283,7 @@ export class ApprovalMatrixComponent {
       currency: this.currency,
       os: this.os,
       keepTempDisk: String(this.os === 'linux' ? this.keepTempDisk : true),
+      keepCpuVendor: String(this.keepCpuVendor),
     });
     window.history.replaceState(null, '', `${window.location.pathname}?${query}`);
   }

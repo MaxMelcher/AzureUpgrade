@@ -16,6 +16,7 @@ export interface AdvisorRequest {
   currency: CurrencyCode;
   skus: string[];
   keepTempDisk: boolean;
+  keepCpuVendor: boolean;
 }
 
 @Component({
@@ -36,6 +37,7 @@ export class AdvisorFormComponent {
   protected os: OperatingSystem = 'linux';
   protected currency: CurrencyCode = 'GBP';
   protected keepTempDisk = true;
+  protected keepCpuVendor = true;
   protected skuInput = ['Standard_D2s_v3', 'Standard_D2s_v4','Standard_D2s_v5', 'Standard_B2ats_v2', 'Standard_A1_v2'].join('\n');
   protected readonly validationError = signal('');
   protected readonly regionSearch = signal('');
@@ -100,6 +102,7 @@ export class AdvisorFormComponent {
       currency: this.currency,
       skus,
       keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
+      keepCpuVendor: this.keepCpuVendor,
     });
   }
 

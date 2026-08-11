@@ -5,12 +5,24 @@
       <h2 id="results-heading">Upgrade analysis</h2>
       <p>{{ results().length }} source VM(s) checked against {{ regionName() }}</p>
     </div>
-    <div class="actions">
-      <button type="button" (click)="copyResults.emit()">Copy results</button>
-      <button type="button" (click)="downloadCsv.emit()">Download CSV</button>
-      <button type="button" (click)="downloadMatrix.emit()" [disabled]="busyMatrix()">
+    <div class="heading-tools">
+      <div class="price-period" role="group" aria-label="Price period">
+        @for (period of pricePeriods; track period) {
+          <button
+            type="button"
+            [class.selected]="pricePeriod() === period"
+            [attr.aria-pressed]="pricePeriod() === period"
+            (click)="pricePeriod.set(period)"
+          >{{ period }}</button>
+        }
+      </div>
+      <div class="actions">
+        <button type="button" (click)="copyResults.emit()">Copy results</button>
+        <button type="button" (click)="downloadCsv.emit()">Download CSV</button>
+        <button type="button" (click)="downloadMatrix.emit()" [disabled]="busyMatrix()">
         {{ busyMatrix() ? 'Preparing matrix…' : 'Quality-check matrix' }}
-      </button>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -150,19 +162,19 @@
                   </div>
 
                   <div class="summary-cell price">
-                    <small>Current hourly</small>
+                    <small>Current {{ pricePeriod() }}</small>
                     <strong>
                       @if (result.sourceHourlyPrice !== null) {
-                        {{ result.sourceHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}
+                        {{ displayPrice(result.sourceHourlyPrice) | currency: currencyCode() : 'symbol' : priceDigits() }}
                       } @else { — }
                     </strong>
                   </div>
 
                   <div class="summary-cell price">
-                    <small>New hourly</small>
+                    <small>New {{ pricePeriod() }}</small>
                     <strong>
                       @if (result.targetHourlyPrice !== null) {
-                        {{ result.targetHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}
+                        {{ displayPrice(result.targetHourlyPrice) | currency: currencyCode() : 'symbol' : priceDigits() }}
                       } @else { — }
                     </strong>
                     @if (result.savingPercent !== null) {
@@ -194,9 +206,8 @@
 
                         <div class="pricing-comparison">
                           <div class="pricing-head"><span>Retail estimate</span><strong>Current</strong><strong>Recommended</strong></div>
-                          <div><span>Hourly</span><b>{{ result.sourceHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}</b><b>{{ result.targetHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}</b></div>
-                          <div><span>Monthly · 730 hours</span><b>{{ (result.sourceHourlyPrice ?? 0) * 730 | currency: currencyCode() }}</b><b>{{ (result.targetHourlyPrice ?? 0) * 730 | currency: currencyCode() }}</b></div>
-                          <div class="saving-row"><span>Estimated monthly saving</span><b>{{ monthlySaving(result) | currency: currencyCode() }}</b><b>{{ result.savingPercent | number: '1.1-1' }}%</b></div>
+                          <div><span>{{ pricePeriodLabel() }} @if (pricePeriod() === 'monthly') { · 730 hours } @else if (pricePeriod() === 'yearly') { · 8,760 hours }</span><b>{{ displayPrice(result.sourceHourlyPrice) | currency: currencyCode() : 'symbol' : priceDigits() }}</b><b>{{ displayPrice(result.targetHourlyPrice) | currency: currencyCode() : 'symbol' : priceDigits() }}</b></div>
+                          <div class="saving-row"><span>Estimated {{ pricePeriod() }} saving</span><b>{{ displaySaving(result) | currency: currencyCode() : 'symbol' : priceDigits() }}</b><b>{{ result.savingPercent | number: '1.1-1' }}%</b></div>
                         </div>
                       }
                     }

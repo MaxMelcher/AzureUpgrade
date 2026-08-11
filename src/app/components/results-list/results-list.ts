@@ -10,6 +10,14 @@ interface ResultGroup {
   results: Recommendation[];
 }
 
+type PricePeriod = 'hourly' | 'monthly' | 'yearly';
+
+const HOURS_BY_PERIOD: Record<PricePeriod, number> = {
+  hourly: 1,
+  monthly: 730,
+  yearly: 8760,
+};
+
 @Component({
   selector: 'app-results-list',
   imports: [CurrencyPipe, DatePipe, DecimalPipe],
@@ -29,6 +37,8 @@ export class ResultsListComponent {
   public readonly downloadMatrix = output<void>();
   protected readonly expanded = signal(new Set<string>());
   protected readonly collapsedGroups = signal(new Set<string>());
+  protected readonly pricePeriod = signal<PricePeriod>('hourly');
+  protected readonly pricePeriods: readonly PricePeriod[] = ['hourly', 'monthly', 'yearly'];
   private readonly skuLookup = computed(
     () => new Map(this.skus().map((sku) => [sku.name.toLowerCase(), sku])),
   );
@@ -133,10 +143,22 @@ export class ResultsListComponent {
       : vm.family;
   }
 
-  protected monthlySaving(result: Recommendation): number | null {
+  protected displayPrice(hourlyPrice: number | null): number | null {
+    return hourlyPrice === null ? null : hourlyPrice * HOURS_BY_PERIOD[this.pricePeriod()];
+  }
+
+  protected displaySaving(result: Recommendation): number | null {
     return result.sourceHourlyPrice !== null && result.targetHourlyPrice !== null
-      ? (result.sourceHourlyPrice - result.targetHourlyPrice) * 730
+      ? (result.sourceHourlyPrice - result.targetHourlyPrice) * HOURS_BY_PERIOD[this.pricePeriod()]
       : null;
+  }
+
+  protected pricePeriodLabel(): string {
+    return this.pricePeriod()[0].toUpperCase() + this.pricePeriod().slice(1);
+  }
+
+  protected priceDigits(): string {
+    return this.pricePeriod() === 'hourly' ? '1.4-4' : '1.2-2';
   }
 
   protected gbFromMb(value: number | null): string {
