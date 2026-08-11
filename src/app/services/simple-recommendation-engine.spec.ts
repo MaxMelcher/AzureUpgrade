@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
+import cpuData from '../../assets/data/cpu-families.json';
+import retirementData from '../../assets/data/retirements.json';
+import ukSouthGbpData from '../../assets/data/regions/gbp/uksouth.json';
+import workloadData from '../../assets/data/workload-families.json';
+import {
+  CpuCatalog,
+  RegionalCatalog,
+  RetirementCatalog,
+  VmSku,
+  WorkloadCatalog,
+} from '../models/vm.models';
+import { applyCpuMetadata } from './cpu-metadata';
+import {
+  applyLifecycleStatus,
+  applyRetirementMetadata,
+} from './retirement-metadata';
 import { EMPTY_PROFILE, prices, region, vm } from './vm.fixtures';
+import { applyWorkloadMetadata } from './workload-metadata';
 import { SimpleRecommendationEngine } from './simple-recommendation-engine';
-import { VmSku } from '../models/vm.models';
 
 const run = (source: VmSku, skus: VmSku[]) =>
   new SimpleRecommendationEngine(region(skus)).recommend(source.name, 'linux');
@@ -16,7 +32,80 @@ const intel = {
 
 const base = { ...intel, profile: { ...EMPTY_PROFILE }, tempDiskMB: 0, workloadFamily: 'D' };
 
+const ukSouthGbpCatalog = applyLifecycleStatus(
+  applyRetirementMetadata(
+    applyWorkloadMetadata(
+      applyCpuMetadata(
+        ukSouthGbpData as unknown as RegionalCatalog,
+        cpuData as unknown as CpuCatalog,
+      ),
+      workloadData as unknown as WorkloadCatalog,
+    ),
+    retirementData as unknown as RetirementCatalog,
+  ),
+);
+
 describe('SimpleRecommendationEngine', () => {
+  it('recommends from the UK South GBP catalog for Standard_A1_v2', () => {
+    const result = new SimpleRecommendationEngine(ukSouthGbpCatalog).recommend(
+      'Standard_A1_v2',
+      'linux',
+    );
+
+    expect(ukSouthGbpCatalog.region).toBe('uksouth');
+    expect(ukSouthGbpCatalog.currencyCode).toBe('GBP');
+    expect(result).toEqual({
+      sourceVm: 'Standard_A1_v2',
+      targetVm: 'Standard_A1_v2',
+      outcome: 'no-compatible-replacement',
+      reason: 'No exact replacement found',
+      sourceHourlyPrice: 0.0311,
+      targetHourlyPrice: null,
+      savingPercent: null,
+      candidateCount: 0,
+      compatibleCandidates: [],
+      migrationGuideUrl:
+        'https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retirement/d-ds-dv2-dsv2-ls-series-migration-guide',
+    });
+  });
+
+  it('keeps Standard_D2s_v3 when Keep Temp Disk is enabled', () => {
+    const result = new SimpleRecommendationEngine(ukSouthGbpCatalog).recommend(
+      'Standard_D2s_v3',
+      'linux',
+      true
+    );
+
+    expect(ukSouthGbpCatalog.region).toBe('uksouth');
+    expect(ukSouthGbpCatalog.currencyCode).toBe('GBP');
+    expect(result.outcome).toBe('keep');
+    expect(result.targetVm).toBe('Standard_D2s_v3');
+    expect(result.sourceHourlyPrice).toBe(0.0879);
+    expect(result.targetHourlyPrice).toBe(0.0879);
+  });
+
+  it('recommends Standard_D2s_v3 --> Standard_D2s_v5 when Keep Temp Disk is disabled', () => {
+    const result = new SimpleRecommendationEngine(ukSouthGbpCatalog).recommend(
+      'Standard_D2s_v3',
+      'linux',
+      false,
+    );
+
+    expect(ukSouthGbpCatalog.region).toBe('uksouth');
+    expect(ukSouthGbpCatalog.currencyCode).toBe('GBP');
+    expect(result).toMatchObject({
+      sourceVm: 'Standard_D2s_v3',
+      targetVm: 'Standard_D2s_v5',
+      outcome: 'cost-optimization',
+      sourceHourlyPrice: 0.0879,
+      targetHourlyPrice: 0.0841,
+      migrationGuideUrl: null,
+    });
+    expect(result.savingPercent).toBeCloseTo(4.3231, 4);
+    expect(result.candidateCount).toBe(result.compatibleCandidates.length);
+    expect(result.compatibleCandidates).toContain('Standard_D2s_v5');
+  });
+
   it('reports an unknown source SKU', () => {
     const result = new SimpleRecommendationEngine(region([vm()])).recommend('Standard_Nope');
 
@@ -71,7 +160,7 @@ describe('SimpleRecommendationEngine', () => {
     expect(result.reason).toBe('Cost optimization: 20.0% cheaper with equivalent capabilities');
   });
 
-  it('prefers the closest shape over the absolute cheapest candidate', () => {
+  it('excludes candidates with different vCPU or memory even when they are cheaper', () => {
     const source = vm({
       ...base,
       name: 'Standard_D4s_v5',
@@ -103,6 +192,8 @@ describe('SimpleRecommendationEngine', () => {
     const result = run(source, [source, sameShape, bigger]);
 
     expect(result.targetVm).toBe('Standard_D4s_v6');
+    expect(result.compatibleCandidates).toEqual(['Standard_D4s_v6']);
+    expect(result.compatibleCandidates).not.toContain('Standard_D8s_v6');
   });
 
   it('never reduces vCPU, memory or capabilities', () => {
@@ -140,6 +231,32 @@ describe('SimpleRecommendationEngine', () => {
 
     expect(result.outcome).toBe('keep');
     expect(result.targetVm).toBe('Standard_D4s_v5');
+  });
+
+  it('preserves temp-disk presence for Windows even when Keep Temp Disk is disabled', () => {
+    const source = vm({
+      ...base,
+      name: 'Standard_D2s_v3',
+      profile: { ...EMPTY_PROFILE, localTempDisk: true },
+      tempDiskMB: 16384,
+      seriesVersion: 3,
+      prices: prices(0.1),
+    });
+    const noTempDisk = vm({
+      ...base,
+      name: 'Standard_D2s_v5',
+      seriesVersion: 5,
+      prices: prices(0.08),
+    });
+
+    const result = new SimpleRecommendationEngine(region([source, noTempDisk])).recommend(
+      source.name,
+      'windows',
+      false,
+    );
+
+    expect(result.outcome).toBe('keep');
+    expect(result.targetVm).toBe(source.name);
   });
 
   it('never crosses the CPU vendor or the workload type', () => {
@@ -199,6 +316,11 @@ describe('SimpleRecommendationEngine', () => {
       name: 'Standard_D2_v2',
       seriesVersion: 2,
       lifecycleStatus: 'retired',
+      retirement: {
+        eolDate: '2025-01-01',
+        description: 'Dv2 retirement',
+        sourceUrl: 'https://learn.microsoft.com',
+      },
       prices: prices(0.1),
     });
 
@@ -206,6 +328,7 @@ describe('SimpleRecommendationEngine', () => {
 
     expect(result.outcome).toBe('no-compatible-replacement');
     expect(result.targetVm).toBe('Standard_D2_v2');
+    expect(result.migrationGuideUrl).toBe('https://learn.microsoft.com');
   });
 
   it('ignores candidates that are retired or restricted in the region', () => {

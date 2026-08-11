@@ -72,6 +72,7 @@ import {
             [regionName]="selectedRegionName()"
             [currencyCode]="currencyCode()"
             [busyMatrix]="busyMatrix()"
+            [tempDiskRelaxationAvailable]="tempDiskRelaxationAvailable()"
             (copyResults)="copyResults()"
             (downloadCsv)="downloadResults()"
             (downloadMatrix)="downloadQualityMatrix()"
@@ -124,6 +125,7 @@ export class App implements OnInit {
   protected readonly searchError = signal('');
   protected readonly busy = signal(false);
   protected readonly busyMatrix = signal(false);
+  protected readonly tempDiskRelaxationAvailable = signal(false);
   protected readonly selectedRegionName = signal('');
   protected readonly currencyCode = signal<CurrencyCode>('GBP');
   protected readonly catalogRefreshedAt = signal<string | null>(null);
@@ -153,6 +155,7 @@ export class App implements OnInit {
     this.searchError.set('');
     this.results.set([]);
     this.lastRequest = request;
+    this.tempDiskRelaxationAvailable.set(request.os === 'linux' && request.keepTempDisk);
 
     this.catalogService.loadRegion(request.region, request.currency).subscribe({
       next: (catalog) => {
@@ -162,7 +165,9 @@ export class App implements OnInit {
         this.selectedRegionName.set(catalog.displayName);
         this.currencyCode.set(catalog.currencyCode);
         this.results.set(
-          request.skus.map((sku) => this.engine!.recommend(sku, request.os)),
+          request.skus.map((sku) =>
+            this.engine!.recommend(sku, request.os, request.keepTempDisk),
+          ),
         );
         this.busy.set(false);
       },
@@ -193,7 +198,11 @@ export class App implements OnInit {
     this.busyMatrix.set(true);
     window.setTimeout(() => {
       const rows = representativeSkus(this.catalog!, this.lastRequest!.os).map((sku) =>
-        this.engine!.recommend(sku.name, this.lastRequest!.os),
+        this.engine!.recommend(
+          sku.name,
+          this.lastRequest!.os,
+          this.lastRequest!.keepTempDisk,
+        ),
       );
       this.exportService.downloadQualityMatrix(
         rows,

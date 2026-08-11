@@ -35,6 +35,12 @@
         <option value="windows">Windows</option>
       </select>
     </label>
+    @if (os === 'linux') {
+      <label class="check-control">
+        <input type="checkbox" name="approvalKeepTempDisk" [(ngModel)]="keepTempDisk" />
+        <span>Keep temp disk</span>
+      </label>
+    }
     <button class="load-button" type="submit" [disabled]="loading()">
       {{ loading() ? 'Generating…' : 'Generate matrix' }}
     </button>
@@ -98,7 +104,27 @@
               </td>
               <td>
                 <span class="status">{{ result.outcome }}</span>
-                <small>{{ result.candidateCount }} compatible candidate(s)</small>
+                @if (result.compatibleCandidates.length > 0) {
+                  <small
+                    class="candidate-tooltip"
+                    tabindex="0"
+                    [attr.aria-describedby]="'approval-candidates-' + result.sourceVm"
+                  >
+                    {{ result.candidateCount }} compatible candidate(s) ⓘ
+                    <span
+                      class="tooltip-panel"
+                      role="tooltip"
+                      [id]="'approval-candidates-' + result.sourceVm"
+                    >
+                      <strong>Compatible SKUs</strong>
+                      <span class="tooltip-list">
+                        @for (candidate of result.compatibleCandidates; track candidate) {
+                          <span>{{ candidate }}</span>
+                        }
+                      </span>
+                    </span>
+                  </small>
+                }
               </td>
               <td>
                 <strong>
@@ -116,7 +142,16 @@
                   <small>{{ result.savingPercent | number: '1.1-1' }}% saving</small>
                 }
               </td>
-              <td class="details-cell"><p>{{ result.reason }}</p></td>
+              <td class="details-cell">
+                <p>{{ result.reason }}</p>
+                @if (result.migrationGuideUrl) {
+                  <a
+                    [href]="result.migrationGuideUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >Official Azure migration guide ↗</a>
+                }
+              </td>
               <td>
                 <div class="approval-control">
                   <div class="approval-buttons" [attr.aria-label]="'Review ' + family(result)">

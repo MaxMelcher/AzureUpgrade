@@ -95,15 +95,58 @@
                     <strong>{{ target(result)?.name ?? (isFailure(result) ? 'Manual review' : result.targetVm) }}</strong>
                     @if (target(result); as targetVm) {
                       <span>{{ targetVm.vcpusAvailable }} vCPU · {{ targetVm.memoryGB }} GB</span>
+                      @if (dropsTempDisk(result)) {
+                        <span class="temp-disk-warning">⚠ Local temp disk removed</span>
+                      }
                     } @else {
                       <span>{{ result.reason }}</span>
+                      @if (
+                        result.outcome === 'no-compatible-replacement' &&
+                        tempDiskRelaxationAvailable()
+                      ) {
+                        <span class="temp-disk-hint">
+                          ℹ Turn off <strong>Keep temp disk</strong> and run again to consider more
+                          Linux migration options.
+                        </span>
+                      }
+                      @if (result.migrationGuideUrl) {
+                        <a
+                          class="migration-guide"
+                          [href]="result.migrationGuideUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >Official Azure migration guide ↗</a>
+                      }
                     }
                   </div>
 
                   <div class="summary-cell">
                     <small>Result</small>
                     <strong>{{ stateLabel(result) }}</strong>
-                    <span>{{ result.candidateCount }} compatible candidate(s)</span>
+                    @if (result.compatibleCandidates.length > 0) {
+                      <span
+                        class="candidate-tooltip"
+                        tabindex="0"
+                        [attr.aria-describedby]="'compatible-candidates-' + result.sourceVm"
+                      >
+                        <span class="candidate-count">
+                          {{ result.candidateCount }} compatible candidate(s)
+                          <span class="tooltip-icon" aria-hidden="true">ⓘ</span>
+                        </span>
+                        <span
+                          class="tooltip-panel"
+                          role="tooltip"
+                          [id]="'compatible-candidates-' + result.sourceVm"
+                        >
+                          <strong>Compatible SKUs</strong>
+                          <span class="tooltip-list">
+                            @for (candidate of result.compatibleCandidates; track candidate) {
+                              <span>{{ candidate }}</span>
+                            }
+                          </span>
+                        </span>
+                      </span>
+                    }
                   </div>
 
                   <div class="summary-cell price">

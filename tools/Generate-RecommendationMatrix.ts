@@ -58,6 +58,7 @@ const header = [
   'Compatible candidates',
   'Currency',
   'Reason',
+  'Official migration guide',
 ];
 const csvRows = [
   header,
@@ -84,6 +85,7 @@ const csvRows = [
     String(recommendation.candidateCount),
     catalog.currencyCode,
     recommendation.reason,
+    recommendation.migrationGuideUrl ?? '',
   ]),
 ];
 

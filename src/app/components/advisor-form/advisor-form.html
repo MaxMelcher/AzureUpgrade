@@ -71,6 +71,19 @@
       </label>
     </div>
 
+    @if (os === 'linux') {
+      <label class="eol-toggle temp-disk-toggle">
+        <input type="checkbox" name="keepTempDisk" [(ngModel)]="keepTempDisk" />
+        <span>
+          Keep temp disk
+          <small>
+            On by default. Turn off to consider Linux sizes without local temporary storage. Move
+            required data and reconfigure swap or temporary workloads before resizing.
+          </small>
+        </span>
+      </label>
+    }
+
     <label class="sku-input">
       <span>Current VM sizes</span>
       <small>One per line, comma-separated, or paste an Excel column.</small>

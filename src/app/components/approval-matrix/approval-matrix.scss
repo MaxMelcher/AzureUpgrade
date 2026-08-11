@@ -42,7 +42,7 @@ h1 {
   border-radius: 12px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(150px, 1fr) 100px 120px auto;
+  grid-template-columns: minmax(150px, 1fr) 100px 120px auto auto;
   padding: 14px;
 }
 .matrix-controls label > span {
@@ -61,6 +61,22 @@ h1 {
   height: 38px;
   padding: 0 9px;
   width: 100%;
+}
+.check-control {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 7px;
+  min-height: 38px;
+}
+.check-control input {
+  accent-color: var(--azure);
+  height: 16px;
+  width: 16px;
+}
+.check-control > span {
+  margin: 0 !important;
+  text-transform: none !important;
 }
 .load-button,
 .export-button,
@@ -231,10 +247,6 @@ td > small {
   color: var(--text) !important;
   font-weight: 650;
 }
-.mandatory {
-  color: var(--danger) !important;
-  font-weight: 700;
-}
 .details-cell {
   max-width: 360px;
   min-width: 250px;
@@ -244,31 +256,15 @@ td > small {
   line-height: 1.45;
   margin: 0;
 }
-details summary {
+.details-cell a {
   color: var(--azure);
-  cursor: pointer;
+  display: inline-block;
   font-weight: 650;
+  margin-top: 6px;
+  text-decoration: none;
 }
-details p {
-  color: var(--muted);
-  line-height: 1.45;
-  margin: 8px 0;
-}
-.check-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.check-list span {
-  background: var(--success-bg);
-  border-radius: 999px;
-  color: var(--success);
-  font-size: 10px;
-  padding: 3px 6px;
-}
-.check-list span.failed {
-  background: var(--danger-bg);
-  color: var(--danger);
+.details-cell a:hover {
+  text-decoration: underline;
 }
 .approval-buttons {
   flex-wrap: nowrap;

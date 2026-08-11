@@ -13,13 +13,13 @@ one candidate reduction, and three outcomes: EOL migration, cost optimization, o
 - Seven named compatibility rules cover availability, lifecycle, generation, processor, workload type, required capabilities, and minimum resources
 - CPU vendor and architecture are hard constraints
 - Workload family, burstable class, and isolation class are preserved
-- Never downsizes usable vCPU or memory and never proposes a retired or retiring size
-- Required local/temp disk, GPU, RDMA, confidential-computing, and Premium IO capabilities are preserved
+- Requires an exact usable vCPU and memory match and never proposes a retired or retiring size
+- GPU, RDMA, confidential-computing, and Premium IO capabilities are preserved; Linux can optionally drop its local temp disk while Windows must keep matching temp-disk presence
 - GPU sources stay in the accelerator domain and are never replaced by CPU-only sizes
 - Result states: Cost optimization, Lifecycle replacement, Keep, and Manual review
 - Source/destination capability comparison for every selected target
 - Hourly, monthly, yearly, and monthly-saving estimates
-- Lifecycle metadata (current, previous generation, retirement announced, retired) with official EOL dates
+- Lifecycle metadata (current, previous generation, retirement announced, retired) with official EOL dates and family-specific Microsoft migration guidance when no compatible replacement is found
 - Excel-friendly CSV, clipboard export, and an exhaustive quality-check matrix
 - Responsive light/dark UI with no browser calls to Azure
 
@@ -80,9 +80,9 @@ Open `http://localhost:4200`.
 ### Approval matrix
 
 Open `http://localhost:4200/?view=approval` to review one deterministic representative VM from every
-Azure resource SKU family. Select the region, currency, and operating system, then generate the
-matrix. Each row includes the selected recommendation, prices, lifecycle outcome, compatible
-candidate count, and reason.
+Azure resource SKU family. Select the region, currency, operating system, and Linux temp-disk
+policy, then generate the matrix. Each row includes the selected recommendation, prices, lifecycle
+outcome, compatible candidate count, and reason.
 
 Mark each row **Correct** or **Incorrect**. Incorrect rows require a **Correct recommendation** from
 the regional catalog, or an explicit **No automatic recommendation** selection. Decisions and
@@ -93,9 +93,9 @@ filters to focus on unreviewed or rejected rows.
 **Download approval JSON** exports a stable, sorted snapshot suitable for checking into source
 control and comparing in approval/snapshot tests. It intentionally excludes the export time and
 catalog refresh timestamp; only the matrix configuration, recommendation results, verdicts, and
-expected corrections participate in diffs. Schema version 3 identifies snapshots from the
-declarative engine and distinguishes an expected SKU from an explicit expectation that no automatic
-recommendation should be produced.
+expected corrections participate in diffs. Schema version 6 identifies snapshots from the
+declarative engine, records the temp-disk policy and compatible candidate names, includes family-specific official migration guidance, and distinguishes an
+expected SKU from an explicit expectation that no automatic recommendation should be produced.
 
 ## Static hosting
 

@@ -15,6 +15,7 @@ export interface AdvisorRequest {
   os: OperatingSystem;
   currency: CurrencyCode;
   skus: string[];
+  keepTempDisk: boolean;
 }
 
 @Component({
@@ -34,7 +35,8 @@ export class AdvisorFormComponent {
   protected region = '';
   protected os: OperatingSystem = 'linux';
   protected currency: CurrencyCode = 'GBP';
-  protected skuInput = ['Standard_D2as_v5', 'Standard_B2ats_v2', 'Standard_A1_v2'].join('\n');
+  protected keepTempDisk = true;
+  protected skuInput = ['Standard_D2s_v3', 'Standard_D2s_v4','Standard_D2s_v5', 'Standard_B2ats_v2', 'Standard_A1_v2'].join('\n');
   protected readonly validationError = signal('');
   protected readonly regionSearch = signal('');
   protected readonly filteredRegions = computed(() => {
@@ -97,6 +99,7 @@ export class AdvisorFormComponent {
       os: this.os,
       currency: this.currency,
       skus,
+      keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
     });
   }
 

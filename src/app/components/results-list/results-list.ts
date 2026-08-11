@@ -23,6 +23,7 @@ export class ResultsListComponent {
   public readonly regionName = input.required<string>();
   public readonly currencyCode = input.required<string>();
   public readonly busyMatrix = input(false);
+  public readonly tempDiskRelaxationAvailable = input(false);
   public readonly copyResults = output<void>();
   public readonly downloadCsv = output<void>();
   public readonly downloadMatrix = output<void>();
@@ -90,6 +91,11 @@ export class ResultsListComponent {
 
   protected isFailure(result: Recommendation): boolean {
     return result.outcome === 'source-not-found' || result.outcome === 'no-compatible-replacement';
+  }
+
+  protected dropsTempDisk(result: Recommendation): boolean {
+    return this.source(result)?.profile.localTempDisk === true &&
+      this.target(result)?.profile.localTempDisk === false;
   }
 
   protected stateLabel(result: Recommendation): string {

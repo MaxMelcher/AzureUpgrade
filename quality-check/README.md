@@ -5,7 +5,8 @@
 The matrix selects one deterministic, preferably unconstrained and Linux-priced representative VM
 per Azure family. Each row includes the declarative engine outcome, selected recommendation,
 retirement status/EOL date, GBP prices, monthly savings, compatible candidate count, and reason.
-The UTF-8 BOM and quoted fields make the file Excel-friendly.
+For retired families without an automatic replacement, it also includes the family-specific
+Microsoft migration guide. The UTF-8 BOM and quoted fields make the file Excel-friendly.
 
 The file starts with Excel's `sep=,` directive and a UTF-8 BOM.
 

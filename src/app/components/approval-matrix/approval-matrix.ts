@@ -30,6 +30,7 @@ export class ApprovalMatrixComponent {
   protected region = 'uksouth';
   protected currency: CurrencyCode = 'GBP';
   protected os: OperatingSystem = 'linux';
+  protected keepTempDisk = true;
   protected readonly loading = signal(false);
   protected readonly error = signal('');
   protected readonly catalogGeneratedAt = signal('');
@@ -86,6 +87,7 @@ export class ApprovalMatrixComponent {
         this.currency = requestedCurrency;
       }
       if (requestedOs === 'linux' || requestedOs === 'windows') this.os = requestedOs;
+      this.keepTempDisk = query.get('keepTempDisk') !== 'false';
       this.load();
     });
   }
@@ -101,7 +103,13 @@ export class ApprovalMatrixComponent {
         this.catalogGeneratedAt.set(catalog.generatedAt);
         this.catalogSkus.set([...catalog.skus].sort((left, right) => left.name.localeCompare(right.name)));
         this.results.set(
-          representativeSkus(catalog, this.os).map((sku) => engine.recommend(sku.name, this.os)),
+          representativeSkus(catalog, this.os).map((sku) =>
+            engine.recommend(
+              sku.name,
+              this.os,
+              this.os === 'linux' ? this.keepTempDisk : true,
+            ),
+          ),
         );
         this.loading.set(false);
       },
@@ -187,9 +195,14 @@ export class ApprovalMatrixComponent {
 
   protected downloadSnapshot(): void {
     const snapshot = {
-      schemaVersion: 3,
+      schemaVersion: 6,
       engine: 'declarative-rule-based',
-      configuration: { region: this.region, currency: this.currency, os: this.os },
+      configuration: {
+        region: this.region,
+        currency: this.currency,
+        os: this.os,
+        keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
+      },
       summary: this.counts(),
       rows: this.results().map((result) => {
         const correction = this.correction(result);
@@ -212,7 +225,9 @@ export class ApprovalMatrixComponent {
           recommendedHourly: result.targetHourlyPrice,
           savingPercent: result.savingPercent,
           candidateCount: result.candidateCount,
+          compatibleCandidates: result.compatibleCandidates,
           reason: result.reason,
+          migrationGuideUrl: result.migrationGuideUrl,
         };
       }),
     };
@@ -232,6 +247,7 @@ export class ApprovalMatrixComponent {
       this.region,
       this.currency,
       this.os,
+      Number(this.os === 'linux' ? this.keepTempDisk : true),
       this.family(result),
       result.sourceVm,
       this.target(result)?.name ?? 'none',
@@ -245,6 +261,7 @@ export class ApprovalMatrixComponent {
       region: this.region,
       currency: this.currency,
       os: this.os,
+      keepTempDisk: String(this.os === 'linux' ? this.keepTempDisk : true),
     });
     window.history.replaceState(null, '', `${window.location.pathname}?${query}`);
   }

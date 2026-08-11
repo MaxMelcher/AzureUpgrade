@@ -1,4 +1,5 @@
 import { OperatingSystem, RegionalCatalog, VmSku } from '../models/vm.models';
+import { migrationGuideUrl as migrationGuideUrlFor } from './retirement-metadata';
 
 /**
  * Simplified, rule-based recommendation engine.
@@ -27,13 +28,20 @@ export interface SimpleRecommendation {
   targetHourlyPrice: number | null;
   savingPercent: number | null;
   candidateCount: number;
+  compatibleCandidates: string[];
+  migrationGuideUrl: string | null;
 }
 
 export interface CompatibilityRule {
   id: string;
   label: string;
   /** True when the candidate may replace the source. */
-  passes: (source: VmSku, candidate: VmSku, os: OperatingSystem) => boolean;
+  passes: (
+    source: VmSku,
+    candidate: VmSku,
+    os: OperatingSystem,
+    keepTempDisk: boolean,
+  ) => boolean;
 }
 
 const hasGpu = (vm: VmSku): boolean => (vm.gpus ?? 0) > 0 || vm.accelerator !== null;
@@ -42,9 +50,20 @@ const hasGpu = (vm: VmSku): boolean => (vm.gpus ?? 0) > 0 || vm.accelerator !== 
 const preserves = (sourceHas: boolean, candidateHas: boolean): boolean =>
   !sourceHas || candidateHas;
 
-/** Missing numbers are treated as "unknown and therefore not good enough". */
-const atLeast = (candidate: number | null, source: number | null): boolean =>
-  source === null || (candidate !== null && candidate >= source);
+/** Windows requires matching temp-disk presence; Linux may drop it only when explicitly allowed. */
+const preservesTempDisk = (
+  source: VmSku,
+  candidate: VmSku,
+  os: OperatingSystem,
+  keepTempDisk: boolean,
+): boolean =>
+  os === 'windows'
+    ? source.profile.localTempDisk === candidate.profile.localTempDisk
+    : !keepTempDisk || preserves(source.profile.localTempDisk, candidate.profile.localTempDisk);
+
+/** Missing numbers are treated as "unknown and therefore not an exact match". */
+const sameNumber = (candidate: number | null, source: number | null): boolean =>
+  source !== null && candidate !== null && candidate === source;
 
 const priceOf = (vm: VmSku, os: OperatingSystem): number | null => {
   const price = os === 'linux' ? vm.prices.linuxPaygHourly : vm.prices.windowsPaygHourly;
@@ -138,8 +157,8 @@ export const COMPATIBILITY_RULES: readonly CompatibilityRule[] = [
   {
     id: 'capabilities',
     label: 'Required capabilities preserved',
-    passes: (source, candidate) =>
-      preserves(source.profile.localTempDisk, candidate.profile.localTempDisk) &&
+    passes: (source, candidate, os, keepTempDisk) =>
+      preservesTempDisk(source, candidate, os, keepTempDisk) &&
       preserves(hasGpu(source), hasGpu(candidate)) &&
       preserves(source.rdma === true, candidate.rdma === true) &&
       preserves(source.profile.confidential, candidate.profile.confidential) &&
@@ -147,10 +166,10 @@ export const COMPATIBILITY_RULES: readonly CompatibilityRule[] = [
   },
   {
     id: 'resources',
-    label: 'No reduction of vCPU or memory',
+    label: 'Exact usable vCPU and memory match',
     passes: (source, candidate) =>
-      atLeast(candidate.vcpusAvailable, source.vcpusAvailable) &&
-      atLeast(candidate.memoryGB, source.memoryGB),
+      sameNumber(candidate.vcpusAvailable, source.vcpusAvailable) &&
+      sameNumber(candidate.memoryGB, source.memoryGB),
   },
 ];
 
@@ -168,41 +187,44 @@ export class SimpleRecommendationEngine {
     this.skuLookup = new Map(catalog.skus.map((sku) => [sku.name.toLowerCase(), sku]));
   }
 
-  public recommend(sourceVm: string, os: OperatingSystem = 'linux'): SimpleRecommendation {
+  public recommend(
+    sourceVm: string,
+    os: OperatingSystem = 'linux',
+    keepTempDisk = true,
+  ): SimpleRecommendation {
     const source = this.skuLookup.get(sourceVm.trim().toLowerCase()) ?? null;
     if (!source) {
-      return this.result(sourceVm, null, null, 'source-not-found', 'Source VM not found', 0);
+      return this.result(sourceVm, null, null, 'source-not-found', 'Source VM not found', []);
     }
 
     const sourcePrice = priceOf(source, os);
     const candidates = this.catalog.skus.filter((candidate) =>
-      COMPATIBILITY_RULES.every((rule) => rule.passes(source, candidate, os)),
+      COMPATIBILITY_RULES.every((rule) => rule.passes(source, candidate, os, keepTempDisk)),
     );
+    const alternatives = candidates.filter((candidate) => candidate.name !== source.name);
     if (candidates.length === 0) {
       return this.result(
         source.name,
         source,
         null,
         'no-compatible-replacement',
-        'No compatible replacement found',
-        0,
+        'No exact replacement found',
+        [],
         os,
       );
     }
 
     const sourceIsEol = isRetired(source) || source.retirement !== null;
     // An EOL source must be replaced, so it can never win the reduction below.
-    const pool = sourceIsEol
-      ? candidates.filter((candidate) => candidate.name !== source.name)
-      : candidates;
+    const pool = sourceIsEol ? alternatives : candidates;
     if (pool.length === 0) {
       return this.result(
         source.name,
         source,
         null,
         'no-compatible-replacement',
-        'No compatible replacement found',
-        candidates.length,
+        'No exact replacement found',
+        alternatives,
         os,
       );
     }
@@ -219,7 +241,7 @@ export class SimpleRecommendationEngine {
         target,
         'eol-migration',
         'EOL migration: cheapest compatible replacement',
-        pool.length,
+        alternatives,
         os,
       );
     }
@@ -232,7 +254,7 @@ export class SimpleRecommendationEngine {
         target,
         'cost-optimization',
         `Cost optimization: ${savingPercent.toFixed(1)}% cheaper with equivalent capabilities`,
-        pool.length,
+        alternatives,
         os,
       );
     }
@@ -243,7 +265,7 @@ export class SimpleRecommendationEngine {
       source,
       'keep',
       'Keep current VM: supported and no cheaper compatible replacement',
-      pool.length,
+      alternatives,
       os,
     );
   }
@@ -267,11 +289,14 @@ export class SimpleRecommendationEngine {
     target: VmSku | null,
     outcome: SimpleOutcome,
     reason: string,
-    candidateCount: number,
+    candidates: readonly VmSku[],
     os: OperatingSystem = 'linux',
   ): SimpleRecommendation {
     const sourceHourlyPrice = source ? priceOf(source, os) : null;
     const targetHourlyPrice = target ? priceOf(target, os) : null;
+    const compatibleCandidates = candidates
+      .map((candidate) => candidate.name)
+      .sort((left, right) => left.localeCompare(right));
     return {
       sourceVm,
       targetVm: target?.name ?? sourceVm,
@@ -283,7 +308,12 @@ export class SimpleRecommendationEngine {
         sourceHourlyPrice !== null && sourceHourlyPrice > 0 && targetHourlyPrice !== null
           ? ((sourceHourlyPrice - targetHourlyPrice) / sourceHourlyPrice) * 100
           : null,
-      candidateCount,
+      candidateCount: compatibleCandidates.length,
+      compatibleCandidates,
+      migrationGuideUrl:
+        outcome === 'no-compatible-replacement'
+          ? migrationGuideUrlFor(source?.retirement ?? null)
+          : null,
     };
   }
 }

@@ -16,6 +16,7 @@ export class ExportService {
         'Saving %',
         'Compatible candidates',
         'Reason',
+        'Official migration guide',
       ],
       ...results.map((result) => [
         result.sourceVm,
@@ -27,6 +28,7 @@ export class ExportService {
         this.number(result.savingPercent),
         String(result.candidateCount),
         result.reason,
+        result.migrationGuideUrl ?? '',
       ]),
     ];
     const text = `${rows.map((row) => row.join('\t')).join('\r\n')}\r\nCurrency\t${currencyCode}`;
@@ -52,6 +54,7 @@ export class ExportService {
         'Compatible candidates',
         'Currency',
         'Reason',
+        'Official migration guide',
       ],
     ];
 
@@ -69,6 +72,7 @@ export class ExportService {
         result.candidateCount,
         currencyCode,
         result.reason,
+        result.migrationGuideUrl,
       ]);
     }
     this.download(rows, fileName);
@@ -99,6 +103,7 @@ export class ExportService {
         'Compatible candidates',
         'Currency',
         'Reason',
+        'Official migration guide',
       ],
     ];
     for (const result of results) {
@@ -119,6 +124,7 @@ export class ExportService {
         result.candidateCount,
         currencyCode,
         result.reason,
+        result.migrationGuideUrl,
       ]);
     }
     this.download(rows, fileName);

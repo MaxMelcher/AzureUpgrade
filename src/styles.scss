@@ -173,6 +173,79 @@ footer {
   text-decoration: underline;
 }
 
+.candidate-tooltip {
+  cursor: help;
+  outline: none;
+  overflow: visible !important;
+  position: relative;
+  white-space: normal !important;
+}
+.candidate-tooltip:focus-visible,
+.candidate-tooltip:focus-visible .candidate-count {
+  outline: 2px solid var(--azure);
+  outline-offset: 2px;
+}
+.candidate-tooltip .candidate-count,
+.candidate-tooltip .tooltip-icon {
+  display: inline;
+  margin: 0;
+  overflow: visible;
+  white-space: normal;
+}
+.candidate-tooltip .tooltip-icon {
+  color: var(--azure);
+  font-size: 11px;
+  margin-left: 2px;
+}
+.candidate-tooltip .tooltip-panel {
+  background: var(--text);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--surface);
+  display: block;
+  left: 0;
+  max-height: 240px;
+  max-width: min(360px, calc(100vw - 32px));
+  min-width: min(260px, calc(100vw - 32px));
+  opacity: 0;
+  overflow: auto;
+  padding: 10px 12px;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  transform: translateY(-3px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+  visibility: hidden;
+  width: max-content;
+  z-index: 50;
+}
+.candidate-tooltip:hover .tooltip-panel,
+.candidate-tooltip:focus .tooltip-panel,
+.candidate-tooltip:focus-within .tooltip-panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  visibility: visible;
+}
+.candidate-tooltip .tooltip-panel > strong {
+  color: inherit;
+  display: block;
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+.candidate-tooltip .tooltip-list,
+.candidate-tooltip .tooltip-list > span {
+  color: inherit;
+  display: block;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
 @media (max-width: 600px) {
   .shell {
     padding-left: 15px;

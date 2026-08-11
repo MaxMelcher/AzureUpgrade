@@ -119,7 +119,8 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 .result-card.not-found {
   border-left: 3px solid var(--warning);
@@ -208,6 +209,16 @@ strong {
 .recommended strong {
   color: var(--azure);
 }
+.migration-guide {
+  color: var(--azure);
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 6px;
+  text-decoration: none;
+}
+.migration-guide:hover {
+  text-decoration: underline;
+}
 .arrow {
   color: var(--azure);
   font-size: 19px;
@@ -217,6 +228,25 @@ strong {
 }
 .negative {
   color: var(--danger) !important;
+}
+.temp-disk-warning {
+  color: var(--warning-text) !important;
+  font-weight: 700;
+}
+.vm .temp-disk-hint {
+  background: var(--selected);
+  border-left: 3px solid var(--azure);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 7px;
+  padding: 6px 8px;
+  white-space: normal;
+}
+.temp-disk-hint strong {
+  color: inherit;
+  font-size: inherit;
+  white-space: normal;
 }
 .details {
   background: var(--details);
