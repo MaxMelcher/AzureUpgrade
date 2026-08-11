@@ -42,7 +42,7 @@ h1 {
   border-radius: 12px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(150px, 1fr) 100px 120px auto auto auto;
+  grid-template-columns: minmax(150px, 1fr) 100px 120px auto;
   padding: 14px;
 }
 .matrix-controls label > span {
@@ -61,22 +61,6 @@ h1 {
   height: 38px;
   padding: 0 9px;
   width: 100%;
-}
-.check-control {
-  align-items: center;
-  cursor: pointer;
-  display: flex;
-  gap: 7px;
-  min-height: 38px;
-}
-.check-control input {
-  accent-color: var(--azure);
-  height: 16px;
-  width: 16px;
-}
-.check-control > span {
-  margin: 0 !important;
-  text-transform: none !important;
 }
 .load-button,
 .export-button,
@@ -254,6 +238,11 @@ td > small {
 .details-cell {
   max-width: 360px;
   min-width: 250px;
+}
+.details-cell p {
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0;
 }
 details summary {
   color: var(--azure);

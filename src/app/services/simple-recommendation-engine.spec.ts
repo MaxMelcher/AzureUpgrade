@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import { EMPTY_PROFILE, prices, region, vm } from './vm.fixtures';
 import { SimpleRecommendationEngine } from './simple-recommendation-engine';
 import { VmSku } from '../models/vm.models';
@@ -36,6 +38,21 @@ describe('SimpleRecommendationEngine', () => {
 
     expect(result.outcome).toBe('keep');
     expect(result.targetVm).toBe('Standard_D2s_v5');
+  });
+
+  it('keeps a supported VM even when there is a cheaper but older one', () => {
+    const source = vm({ ...base, name: 'Standard_D2s_v6', seriesVersion: 6, prices: prices(0.2) });
+    const cheaperButOlder = vm({
+      ...base,
+      name: 'Standard_D2s_v5',
+      seriesVersion: 5,
+      prices: prices(0.1),
+    });
+
+    const result = run(source, [source, cheaperButOlder]);
+
+    expect(result.outcome).toBe('keep');
+    expect(result.targetVm).toBe('Standard_D2s_v6');
   });
 
   it('recommends a cheaper compatible VM of the same shape', () => {

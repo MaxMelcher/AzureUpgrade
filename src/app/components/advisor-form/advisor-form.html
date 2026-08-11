@@ -65,42 +65,11 @@
         <span>CPU compatibility</span>
         <p class="control-static">Same vendor and architecture</p>
         <small class="control-note">
-          Intel stays Intel, AMD stays AMD and Arm64 stays Arm64. A processor change is only ever
-          offered as a separate alternative-architecture option.
+          Intel stays Intel, AMD stays AMD and Arm64 stays on the same processor vendor. Targets
+          with a different processor are excluded.
         </small>
       </label>
     </div>
-
-    @if (os === 'linux') {
-      <label class="eol-toggle temp-disk-toggle">
-        <input type="checkbox" name="keepTempDisk" [(ngModel)]="keepTempDisk" />
-        <span>
-          Keep temp disk
-          <small>
-            On by default. Turn off to consider cheaper Linux sizes without local temporary storage.
-            The target won't have <code>/dev/disk/azure/resource</code> (often mounted at
-            <code>/mnt</code>); reconfigure swap and temporary workloads, and move any required data
-            to persistent storage before resizing.
-          </small>
-        </span>
-      </label>
-    }
-
-    <label class="eol-toggle">
-      <input
-        type="checkbox"
-        name="includeMigrationRecommendations"
-        [(ngModel)]="includeMigrationRecommendations"
-      />
-      <span>
-        Show best-fit recommendations for mandatory upgrades
-        <small>
-          Includes migration targets that preserve minimum CPU, memory, architecture and isolation,
-          but may change workload family, disk limits or NIC limits. Temporary storage can change
-          only when Keep temp disk is off. Validate every migration before production use.
-        </small>
-      </span>
-    </label>
 
     <label class="sku-input">
       <span>Current VM sizes</span>

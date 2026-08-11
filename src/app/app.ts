@@ -3,10 +3,14 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { ApprovalMatrixComponent } from './components/approval-matrix/approval-matrix';
 import { AdvisorFormComponent, AdvisorRequest } from './components/advisor-form/advisor-form';
 import { ResultsListComponent } from './components/results-list/results-list';
-import { CurrencyCode, RegionInfo, RecommendationResult } from './models/vm.models';
+import { CurrencyCode, RegionInfo, RegionalCatalog, VmSku } from './models/vm.models';
 import { CatalogService } from './services/catalog.service';
 import { ExportService } from './services/export.service';
-import { RecommendationEngine } from './services/recommendation-engine';
+import {
+  Recommendation,
+  RecommendationEngine,
+  representativeSkus,
+} from './services/recommendation-engine';
 
 @Component({
   selector: 'app-root',
@@ -64,6 +68,7 @@ import { RecommendationEngine } from './services/recommendation-engine';
         @if (results().length > 0) {
           <app-results-list
             [results]="results()"
+            [skus]="catalogSkus()"
             [regionName]="selectedRegionName()"
             [currencyCode]="currencyCode()"
             [busyMatrix]="busyMatrix()"
@@ -113,7 +118,8 @@ export class App implements OnInit {
     new URLSearchParams(window.location.search).get('view') === 'approval';
 
   protected readonly regions = signal<RegionInfo[]>([]);
-  protected readonly results = signal<RecommendationResult[]>([]);
+  protected readonly results = signal<Recommendation[]>([]);
+  protected readonly catalogSkus = signal<VmSku[]>([]);
   protected readonly regionsError = signal('');
   protected readonly searchError = signal('');
   protected readonly busy = signal(false);
@@ -123,6 +129,7 @@ export class App implements OnInit {
   protected readonly catalogRefreshedAt = signal<string | null>(null);
   private lastRequest: AdvisorRequest | null = null;
   private engine: RecommendationEngine | null = null;
+  private catalog: RegionalCatalog | null = null;
 
   public ngOnInit(): void {
     this.catalogService.loadRegions().subscribe({
@@ -150,15 +157,12 @@ export class App implements OnInit {
     this.catalogService.loadRegion(request.region, request.currency).subscribe({
       next: (catalog) => {
         this.engine = new RecommendationEngine(catalog);
+        this.catalog = catalog;
+        this.catalogSkus.set(catalog.skus);
         this.selectedRegionName.set(catalog.displayName);
         this.currencyCode.set(catalog.currencyCode);
         this.results.set(
-          request.skus.map((sku) =>
-            this.engine!.findRecommendations(sku, request.region, request.os, {
-              includeMigrationRecommendations: request.includeMigrationRecommendations,
-              keepTempDisk: request.keepTempDisk,
-            }),
-          ),
+          request.skus.map((sku) => this.engine!.recommend(sku, request.os)),
         );
         this.busy.set(false);
       },
@@ -182,18 +186,19 @@ export class App implements OnInit {
   }
 
   protected downloadQualityMatrix(): void {
-    if (!this.engine || !this.lastRequest) {
+    if (!this.engine || !this.catalog || !this.lastRequest) {
       return;
     }
 
     this.busyMatrix.set(true);
     window.setTimeout(() => {
-      const rows = this.engine!.createQualityMatrix([this.lastRequest!.os], {
-        includeMigrationRecommendations: this.lastRequest!.includeMigrationRecommendations,
-        keepTempDisk: this.lastRequest!.keepTempDisk,
-      });
+      const rows = representativeSkus(this.catalog!, this.lastRequest!.os).map((sku) =>
+        this.engine!.recommend(sku.name, this.lastRequest!.os),
+      );
       this.exportService.downloadQualityMatrix(
         rows,
+        this.catalog!,
+        this.lastRequest!.os,
         this.currencyCode(),
         `recommendation-quality-matrix-${this.lastRequest!.region}-${this.lastRequest!.os}-${this.currencyCode().toLowerCase()}.csv`,
       );

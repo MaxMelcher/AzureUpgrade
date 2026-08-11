@@ -1,24 +1,13 @@
 import { CurrencyPipe, DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import {
-  CandidateRecommendation,
-  CompatibilityCheck,
-  RecommendationResult,
-  RecommendationStatus,
-  VmSku,
-} from '../../models/vm.models';
-
-interface CandidateList {
-  key: string;
-  title: string;
-  candidates: CandidateRecommendation[];
-}
+import { VmSku } from '../../models/vm.models';
+import { Recommendation, SimpleOutcome } from '../../services/recommendation-engine';
 
 interface ResultGroup {
   key: string;
   title: string;
   description: string;
-  results: RecommendationResult[];
+  results: Recommendation[];
 }
 
 @Component({
@@ -29,7 +18,8 @@ interface ResultGroup {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ResultsListComponent {
-  public readonly results = input.required<RecommendationResult[]>();
+  public readonly results = input.required<Recommendation[]>();
+  public readonly skus = input.required<VmSku[]>();
   public readonly regionName = input.required<string>();
   public readonly currencyCode = input.required<string>();
   public readonly busyMatrix = input(false);
@@ -38,70 +28,41 @@ export class ResultsListComponent {
   public readonly downloadMatrix = output<void>();
   protected readonly expanded = signal(new Set<string>());
   protected readonly collapsedGroups = signal(new Set<string>());
+  private readonly skuLookup = computed(
+    () => new Map(this.skus().map((sku) => [sku.name.toLowerCase(), sku])),
+  );
   protected readonly resultGroups = computed<ResultGroup[]>(() => {
     const sorted = [...this.results()].sort(
-      (left, right) =>
-        (right.recommendation?.monthlySaving ?? Number.NEGATIVE_INFINITY) -
-        (left.recommendation?.monthlySaving ?? Number.NEGATIVE_INFINITY),
+      (left, right) => (right.savingPercent ?? Number.NEGATIVE_INFINITY) -
+        (left.savingPercent ?? Number.NEGATIVE_INFINITY),
     );
-    const inState = (...states: RecommendationStatus[]): RecommendationResult[] =>
-      sorted.filter((result) => states.includes(result.status));
+    const outcomes = (...values: SimpleOutcome[]): Recommendation[] =>
+      sorted.filter((result) => values.includes(result.outcome));
 
     return [
       {
         key: 'cost',
         title: 'Cost optimizations',
-        description:
-          'Compatible replacements that are at least 5% cheaper. Optional Linux temp-disk removal is highlighted.',
-        results: inState('recommended').filter(
-          (result) => !result.mandatoryUpgrade && result.recommendationType === 'COST_OPTIMIZATION',
-        ),
-      },
-      {
-        key: 'modernization',
-        title: 'Generation modernizations',
-        description:
-          'Exact-shape successors on a newer processor generation. A saving is only shown when both retail prices are available.',
-        results: inState('recommended').filter(
-          (result) =>
-            !result.mandatoryUpgrade && result.recommendationType === 'PERFORMANCE_UPGRADE',
-        ),
+        description: 'Cheaper targets that pass every compatibility rule.',
+        results: outcomes('cost-optimization'),
       },
       {
         key: 'lifecycle',
         title: 'Lifecycle replacements',
-        description:
-          'Retired or retiring VM sizes that must be replaced. A lifecycle replacement is not a cost optimization.',
-        results: sorted.filter(
-          (result) =>
-            result.mandatoryUpgrade ||
-            result.status === 'lifecycle-replacement' ||
-            result.status === 'manual-migration-required',
-        ),
+        description: 'Retired or retiring VM sizes with a compatible replacement.',
+        results: outcomes('eol-migration'),
       },
       {
         key: 'keep',
         title: 'Keep current size',
-        description:
-          'Supported VM sizes with no fully compatible alternative offering material savings.',
-        results: inState('keep'),
+        description: 'Supported VM sizes with no cheaper compatible replacement.',
+        results: outcomes('keep'),
       },
       {
         key: 'review',
         title: 'Manual review',
-        description:
-          'No compatible cheaper replacement. Alternative architectures and profile changes are listed for manual review.',
-        results: inState(
-          'no-safe-cheaper-replacement',
-          'manual-review',
-          'alternative-architecture',
-        ).filter((result) => !result.mandatoryUpgrade),
-      },
-      {
-        key: 'unknown',
-        title: 'Not analyzed',
-        description: 'VM sizes that are unknown in this region or lack authoritative capabilities.',
-        results: inState('sku-not-found', 'incomplete-capabilities'),
+        description: 'Unknown sources or VM sizes for which no compatible replacement exists.',
+        results: outcomes('source-not-found', 'no-compatible-replacement'),
       },
     ].filter((group) => group.results.length > 0);
   });
@@ -118,66 +79,40 @@ export class ResultsListComponent {
     this.collapsedGroups.set(updated);
   }
 
-  protected price(result: RecommendationResult, vm: VmSku): number | null {
-    return result.os === 'linux' ? vm.prices.linuxPaygHourly : vm.prices.windowsPaygHourly;
+  protected source(result: Recommendation): VmSku | null {
+    return this.skuLookup().get(result.sourceVm.toLowerCase()) ?? null;
   }
 
-  protected savingClass(candidate: CandidateRecommendation | null): string {
-    return (candidate?.monthlySaving ?? 0) >= 0 ? 'positive' : 'negative';
+  protected target(result: Recommendation): VmSku | null {
+    if (this.isFailure(result)) return null;
+    return this.skuLookup().get(result.targetVm.toLowerCase()) ?? null;
+  }
+
+  protected isFailure(result: Recommendation): boolean {
+    return result.outcome === 'source-not-found' || result.outcome === 'no-compatible-replacement';
+  }
+
+  protected stateLabel(result: Recommendation): string {
+    return ({
+      'source-not-found': 'VM size not found',
+      'no-compatible-replacement': 'No compatible replacement',
+      'eol-migration': 'Lifecycle replacement',
+      'cost-optimization': 'Cost optimization',
+      keep: 'Keep',
+    } as Record<SimpleOutcome, string>)[result.outcome];
+  }
+
+  protected localStorage(vm: VmSku | null): string {
+    if (!vm) return 'Unknown';
+    if (!vm.profile.localTempDisk) return 'None';
+    return (vm.tempDiskMB ?? 0) > 0 ? this.gbFromMb(vm.tempDiskMB) : 'Included';
   }
 
   protected yesNo(value: boolean | null): string {
     return value === null ? 'Unknown' : value ? 'Yes' : 'No';
   }
 
-  protected localStorage(vm: VmSku | null | undefined): string {
-    if (!vm) return 'Unknown';
-    if (!vm.profile.localTempDisk) return 'None';
-    return (vm.tempDiskMB ?? 0) > 0 ? this.gbFromMb(vm.tempDiskMB) : 'Included';
-  }
-
-  protected dropsTempDisk(result: RecommendationResult): boolean {
-    return result.recommendation?.lostCapabilities.includes('local/temp disk') ?? false;
-  }
-
-  protected absolute(value: number): number {
-    return Math.abs(value);
-  }
-
-  protected candidateLists(result: RecommendationResult): CandidateList[] {
-    return [
-      { key: 'alternatives', title: 'Alternative candidates', candidates: result.alternatives },
-      {
-        key: 'architecture',
-        title: 'Alternative architecture – never selected automatically',
-        candidates: result.alternativeArchitecture,
-      },
-      { key: 'review', title: 'Manual review', candidates: result.manualReview },
-    ].filter((list) => list.candidates.length > 0);
-  }
-
-  protected badges(candidate: CandidateRecommendation): CompatibilityCheck[] {
-    return candidate.checks;
-  }
-
-  protected stateLabel(result: RecommendationResult): string {
-    if (result.recommendationType === 'PERFORMANCE_UPGRADE') return 'Generation modernization';
-    return (
-      {
-        keep: 'Keep',
-        recommended: 'Recommended',
-        'lifecycle-replacement': 'Lifecycle replacement – not a cost saving',
-        'alternative-architecture': 'Alternative architecture',
-        'manual-review': 'Manual review',
-        'manual-migration-required': 'Manual migration required',
-        'no-safe-cheaper-replacement': 'No safe cheaper replacement',
-        'sku-not-found': 'VM size not found',
-        'incomplete-capabilities': 'Incomplete Azure metadata',
-      } as Record<RecommendationStatus, string>
-    )[result.status];
-  }
-
-  protected accelerator(vm: VmSku | null | undefined): string {
+  protected accelerator(vm: VmSku | null): string {
     if (!vm) return 'Unknown';
     if (!vm.accelerator && (vm.gpus ?? 0) === 0) return 'None';
     return vm.accelerator
@@ -185,11 +120,17 @@ export class ResultsListComponent {
       : `${vm.gpus} GPU`;
   }
 
-  protected generation(vm: VmSku | null | undefined): string {
+  protected generation(vm: VmSku | null): string {
     if (!vm) return 'Unknown';
     return vm.workloadFamily && vm.seriesVersion
       ? `${vm.workloadFamily}v${vm.seriesVersion}`
       : vm.family;
+  }
+
+  protected monthlySaving(result: Recommendation): number | null {
+    return result.sourceHourlyPrice !== null && result.targetHourlyPrice !== null
+      ? (result.sourceHourlyPrice - result.targetHourlyPrice) * 730
+      : null;
   }
 
   protected gbFromMb(value: number | null): string {

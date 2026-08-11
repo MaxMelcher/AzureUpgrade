@@ -15,8 +15,6 @@ export interface AdvisorRequest {
   os: OperatingSystem;
   currency: CurrencyCode;
   skus: string[];
-  includeMigrationRecommendations: boolean;
-  keepTempDisk: boolean;
 }
 
 @Component({
@@ -37,8 +35,6 @@ export class AdvisorFormComponent {
   protected os: OperatingSystem = 'linux';
   protected currency: CurrencyCode = 'GBP';
   protected skuInput = ['Standard_D2as_v5', 'Standard_B2ats_v2', 'Standard_A1_v2'].join('\n');
-  protected includeMigrationRecommendations = true;
-  protected keepTempDisk = true;
   protected readonly validationError = signal('');
   protected readonly regionSearch = signal('');
   protected readonly filteredRegions = computed(() => {
@@ -101,8 +97,6 @@ export class AdvisorFormComponent {
       os: this.os,
       currency: this.currency,
       skus,
-      includeMigrationRecommendations: this.includeMigrationRecommendations,
-      keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
     });
   }
 

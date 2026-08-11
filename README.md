@@ -3,27 +3,23 @@
 A production-ready, backend-free Angular application that recommends modern Azure VM replacements by comparing authoritative regional SKU capabilities and public Azure retail prices.
 
 Recommendations are compatibility-first and cost-second: price is only compared after every hard
-compatibility rule has passed. The matcher never infers hardware from SKU-name letters. Temporary
-storage, usable vCPU, architecture, Premium IO, accelerated networking, RDMA, and disk limits come
-from `az vm list-skus`, and CPU vendor/architecture/model plus the workload profile come from
-curated per-family metadata that overrides name parsing (for example `Lsv2` is AMD even though its
-name has no `a`).
+compatibility rule has passed. The compact engine expresses the decision as seven declarative rules,
+one candidate reduction, and three outcomes: EOL migration, cost optimization, or keep.
 
 ## Features
 
 - Regional, case-insensitive lookup for pasted VM lists
 - Linux and Windows PAYG recommendations in USD, EUR, or GBP
-- Ordered candidate selection: hardware compatibility, workload profile, regional availability, lifecycle, performance equivalence, then price
-- CPU vendor and architecture are hard constraints; Intel↔AMD and x64↔Arm64 changes are only ever offered as a separate "Alternative architecture" option
-- Workload family is preserved; cross-family targets are surfaced for manual review only
-- B-series is never proposed for a non-burstable source without utilization telemetry
-- Never downsizes vCPU or memory, never recommends an older generation, and never proposes a retiring size
-- Local/temp disk, local NVMe, storage-bandwidth, network and accelerator capabilities must be preserved; a cheaper size without the temp disk is only shown as a conditional saving
+- Seven named compatibility rules cover availability, lifecycle, generation, processor, workload type, required capabilities, and minimum resources
+- CPU vendor and architecture are hard constraints
+- Workload family, burstable class, and isolation class are preserved
+- Never downsizes usable vCPU or memory and never proposes a retired or retiring size
+- Required local/temp disk, GPU, RDMA, confidential-computing, and Premium IO capabilities are preserved
 - GPU sources stay in the accelerator domain and are never replaced by CPU-only sizes
-- Result states: Recommended, Equivalent modernization, Conditional saving, Lifecycle replacement, Alternative architecture, Manual review, and No safe cheaper replacement
-- Source/destination comparison with explicit ✓/✕ compatibility badges per recommendation
+- Result states: Cost optimization, Lifecycle replacement, Keep, and Manual review
+- Source/destination capability comparison for every selected target
 - Hourly, monthly, yearly, and monthly-saving estimates
-- Lifecycle metadata (current, previous generation, retirement announced, retired) with official EOL dates and migration guidance
+- Lifecycle metadata (current, previous generation, retirement announced, retired) with official EOL dates
 - Excel-friendly CSV, clipboard export, and an exhaustive quality-check matrix
 - Responsive light/dark UI with no browser calls to Azure
 
@@ -56,7 +52,7 @@ The generator:
 
 1. Gets regional VM capabilities with `az vm list-skus --all`.
 2. Follows every Azure Retail Prices API page.
-3. Excludes Spot, Low Priority, and Dev/Test meters from PAYG.
+3. Excludes Spot, Low Priority, Dev/Test, and Cloud Services meters from VM PAYG pricing.
 4. Uses active, primary, hourly Consumption meters matched by `armSkuName`.
 5. Logs ambiguous active meters and selects deterministically by newest effective date, then lowest price, then meter ID.
 6. Normalizes reservation full-term prices to effective hourly prices using 8,760 hours/year.
@@ -74,7 +70,6 @@ npm install
 npm test
 npm run build
 npm run qa:recommendations
-npm run qa:compare-engines
 npm start
 ```
 
@@ -82,17 +77,12 @@ Open `http://localhost:4200`.
 
 `npm run qa:recommendations` writes `quality-check/recommendations-uksouth-linux-family.csv`. It contains one representative VM per UK South family for Linux, including the resulting recommendation state and source lifecycle status, using the exact same engine as the application.
 
-`npm run qa:compare-engines` writes `quality-check/engine-comparison-uksouth-linux.csv`. It runs the
-simplified, rule-based `SimpleRecommendationEngine` (six declarative rules plus one reduction) next
-to the current engine on the same representatives. `quality-check/ENGINE-COMPARISON.md` summarizes
-the agreement rate and the reason for every class of difference.
-
 ### Approval matrix
 
 Open `http://localhost:4200/?view=approval` to review one deterministic representative VM from every
-Azure resource SKU family. Select the region, currency, operating system, mandatory-migration mode,
-and Linux temp-disk policy, then generate the matrix. Each row includes the selected recommendation,
-prices, lifecycle outcome, failed compatibility checks, capability losses, and full explanation.
+Azure resource SKU family. Select the region, currency, and operating system, then generate the
+matrix. Each row includes the selected recommendation, prices, lifecycle outcome, compatible
+candidate count, and reason.
 
 Mark each row **Correct** or **Incorrect**. Incorrect rows require a **Correct recommendation** from
 the regional catalog, or an explicit **No automatic recommendation** selection. Decisions and
@@ -102,9 +92,10 @@ filters to focus on unreviewed or rejected rows.
 
 **Download approval JSON** exports a stable, sorted snapshot suitable for checking into source
 control and comparing in approval/snapshot tests. It intentionally excludes the export time and
-catalog refresh timestamp; only the matrix configuration, recommendation results, compatibility
-details, verdicts, and expected corrections participate in diffs. Schema version 2 distinguishes an
-expected SKU from an explicit expectation that no automatic recommendation should be produced.
+catalog refresh timestamp; only the matrix configuration, recommendation results, verdicts, and
+expected corrections participate in diffs. Schema version 3 identifies snapshots from the
+declarative engine and distinguishes an expected SKU from an explicit expectation that no automatic
+recommendation should be produced.
 
 ## Static hosting
 

@@ -8,9 +8,7 @@ import { OperatingSystem, RegionalCatalog, VmSku } from '../models/vm.models';
  *   2. one reduction that keeps the best remaining candidate,
  *   3. three outcome rules (EOL migration, cost optimization, keep).
  *
- * It intentionally contains no per-family exceptions or curated overrides; see
- * `RecommendationEngine` for the full-featured matcher and
- * `tools/Compare-RecommendationEngines.ts` for a side-by-side comparison of both.
+ * It intentionally contains no per-family exceptions or curated overrides.
  */
 
 /** Weights used to score how close a candidate is to the source shape. */
@@ -68,6 +66,39 @@ const isAvailable = (vm: VmSku, region: string, os: OperatingSystem): boolean =>
 /** Generation of a candidate, newest first when sorting descending. */
 const generationOf = (vm: VmSku): number => (vm.seriesVersion ?? 0) * 100 + (vm.cpuGeneration ?? 0);
 
+/** One deterministic, preferably priced and unconstrained SKU from every Azure family. */
+export function representativeSkus(
+  catalog: RegionalCatalog,
+  os: OperatingSystem = 'linux',
+): VmSku[] {
+  const families = new Map<string, VmSku[]>();
+  for (const sku of catalog.skus) {
+    const key = sku.family || sku.name;
+    const members = families.get(key) ?? [];
+    members.push(sku);
+    families.set(key, members);
+  }
+
+  const isConstrained = (vm: VmSku): boolean =>
+    vm.vcpus !== null && vm.vcpusAvailable !== null && vm.vcpusAvailable < vm.vcpus;
+
+  return [...families.values()]
+    .map(
+      (members) =>
+        members.sort(
+          (left, right) =>
+            Number(isConstrained(left)) - Number(isConstrained(right)) ||
+            Number(priceOf(left, os) === null) - Number(priceOf(right, os) === null) ||
+            (left.vcpusAvailable ?? Number.MAX_SAFE_INTEGER) -
+              (right.vcpusAvailable ?? Number.MAX_SAFE_INTEGER) ||
+            (left.memoryGB ?? Number.MAX_SAFE_INTEGER) -
+              (right.memoryGB ?? Number.MAX_SAFE_INTEGER) ||
+            left.name.localeCompare(right.name),
+        )[0],
+    )
+    .sort((left, right) => left.family.localeCompare(right.family));
+}
+
 /** The rules, in the order they are documented and applied. */
 export const COMPATIBILITY_RULES: readonly CompatibilityRule[] = [
   {
@@ -79,6 +110,12 @@ export const COMPATIBILITY_RULES: readonly CompatibilityRule[] = [
     id: 'lifecycle',
     label: 'Target is not retired and has no announced EOL',
     passes: (_source, candidate) => !isRetired(candidate),
+  },
+  {
+    id: 'generation',
+    label: 'Target is not an older generation',
+    passes: (source, candidate) =>
+      candidate.name === source.name || generationOf(candidate) >= generationOf(source),
   },
   {
     id: 'processor',

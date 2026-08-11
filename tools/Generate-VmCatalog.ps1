@@ -211,7 +211,10 @@ function Get-OperatingSystem {
 function Test-IsExcludedPrice {
     param($Price)
     $description = "$($Price.productName) $($Price.skuName) $($Price.meterName)"
-    return $description -match '(?i)\bspot\b|\blow priority\b|\bdev/?test\b'
+    # The Retail Prices API returns Cloud Services meters under serviceName "Virtual Machines" and
+    # reuses VM armSkuName values. Those are not IaaS VM prices and can otherwise be mistaken for
+    # Linux because their product names do not contain "Windows".
+    return $description -match '(?i)\bspot\b|\blow priority\b|\bdev/?test\b|\bcloud services\b'
 }
 
 function Select-DeterministicPrice {

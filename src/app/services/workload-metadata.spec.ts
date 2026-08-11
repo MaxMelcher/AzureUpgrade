@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import { WorkloadCatalog } from '../models/vm.models';
 import { region, vm } from './vm.fixtures';
 import { applyWorkloadMetadata } from './workload-metadata';

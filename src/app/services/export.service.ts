@@ -1,35 +1,32 @@
 import { Injectable } from '@angular/core';
-import { QualityMatrixRow, RecommendationResult } from '../models/vm.models';
+import { OperatingSystem, RegionalCatalog, VmSku } from '../models/vm.models';
+import { Recommendation } from './recommendation-engine';
 
 @Injectable({ providedIn: 'root' })
 export class ExportService {
-  public async copyResults(results: RecommendationResult[], currencyCode: string): Promise<void> {
+  public async copyResults(results: Recommendation[], currencyCode: string): Promise<void> {
     const rows = [
       [
         'Current VM',
         'Recommended VM',
-        'Status',
-        'Recommendation type',
-        'Lifecycle',
-        'Mandatory upgrade',
-        'EOL date',
+        'Outcome',
         'Current hourly',
         'New hourly',
         'Monthly saving',
-        'Confidence',
+        'Saving %',
+        'Compatible candidates',
+        'Reason',
       ],
       ...results.map((result) => [
-        result.source?.name ?? result.inputSku,
-        result.recommendation?.vm.name ?? '',
-        result.status,
-        result.recommendationType,
-        result.source?.lifecycleStatus ?? '',
-        result.mandatoryUpgrade ? 'Yes' : 'No',
-        result.source?.retirement?.eolDate ?? '',
-        this.number(result.source ? this.price(result, result.source) : null),
-        this.number(result.recommendation?.hourlyPrice ?? null),
-        this.number(result.recommendation?.monthlySaving ?? null),
-        result.confidence,
+        result.sourceVm,
+        this.recommendedVm(result),
+        result.outcome,
+        this.number(result.sourceHourlyPrice),
+        this.number(result.targetHourlyPrice),
+        this.number(this.monthlySaving(result)),
+        this.number(result.savingPercent),
+        String(result.candidateCount),
+        result.reason,
       ]),
     ];
     const text = `${rows.map((row) => row.join('\t')).join('\r\n')}\r\nCurrency\t${currencyCode}`;
@@ -37,7 +34,7 @@ export class ExportService {
   }
 
   public downloadResults(
-    results: RecommendationResult[],
+    results: Recommendation[],
     currencyCode: string,
     fileName: string,
   ): void {
@@ -45,125 +42,98 @@ export class ExportService {
       [
         'Current VM',
         'Recommended VM',
-        'Region',
-        'OS',
-        'Status',
-        'Recommendation type',
-        'Lifecycle',
-        'Mandatory upgrade',
-        'EOL date',
-        'Current vCPU',
-        'New vCPU',
-        'Current RAM GB',
-        'New RAM GB',
-        'CPU vendor',
-        'CPU architecture',
-        'Temp disk MB',
+        'Outcome',
         'Current hourly',
         'New hourly',
         'Current yearly',
         'New yearly',
         'Monthly saving',
         'Saving %',
+        'Compatible candidates',
         'Currency',
-        'Confidence',
-        'Explanation',
+        'Reason',
       ],
     ];
 
     for (const result of results) {
-      const sourcePrice = result.source ? this.price(result, result.source) : null;
       rows.push([
-        result.source?.name ?? result.inputSku,
-        result.recommendation?.vm.name ?? '',
-        result.region,
-        result.os,
-        result.status,
-        result.recommendationType,
-        result.source?.lifecycleStatus ?? '',
-        result.mandatoryUpgrade ? 'Yes' : 'No',
-        result.source?.retirement?.eolDate ?? '',
-        result.source?.vcpusAvailable ?? null,
-        result.recommendation?.vm.vcpusAvailable ?? null,
-        result.source?.memoryGB ?? null,
-        result.recommendation?.vm.memoryGB ?? null,
-        result.recommendation?.vm.cpuVendor ?? '',
-        result.recommendation?.vm.cpuArchitecture ?? '',
-        result.recommendation?.vm.tempDiskMB ?? null,
-        sourcePrice,
-        result.recommendation?.hourlyPrice ?? null,
-        sourcePrice === null ? null : sourcePrice * 8760,
-        result.recommendation?.hourlyPrice === null ||
-        result.recommendation?.hourlyPrice === undefined
-          ? null
-          : result.recommendation.hourlyPrice * 8760,
-        result.recommendation?.monthlySaving ?? null,
-        result.recommendation?.savingPercent ?? null,
+        result.sourceVm,
+        this.recommendedVm(result),
+        result.outcome,
+        result.sourceHourlyPrice,
+        result.targetHourlyPrice,
+        result.sourceHourlyPrice === null ? null : result.sourceHourlyPrice * 8760,
+        result.targetHourlyPrice === null ? null : result.targetHourlyPrice * 8760,
+        this.monthlySaving(result),
+        result.savingPercent,
+        result.candidateCount,
         currencyCode,
-        result.confidence,
-        result.explanation,
+        result.reason,
       ]);
     }
     this.download(rows, fileName);
   }
 
   public downloadQualityMatrix(
-    matrix: QualityMatrixRow[],
+    results: Recommendation[],
+    catalog: RegionalCatalog,
+    os: OperatingSystem,
     currencyCode: string,
     fileName: string,
   ): void {
+    const lookup = new Map(catalog.skus.map((sku) => [sku.name.toLowerCase(), sku]));
     const rows: Array<Array<string | number | null>> = [
       [
         'Region',
         'Family',
         'Source VM',
         'OS',
-        'Status',
-        'Recommendation type',
-        'Recommendation state',
+        'Outcome',
         'Lifecycle',
-        'Mandatory upgrade',
         'EOL date',
         'Recommended VM',
         'Source hourly',
         'Recommended hourly',
         'Monthly saving',
         'Saving %',
+        'Compatible candidates',
         'Currency',
-        'Confidence',
-        'Explanation',
+        'Reason',
       ],
     ];
-    for (const row of matrix) {
+    for (const result of results) {
+      const source = lookup.get(result.sourceVm.toLowerCase()) ?? null;
       rows.push([
-        row.region,
-        row.family,
-        row.sourceSku,
-        row.os,
-        row.status,
-        row.recommendationType,
-        row.recommendationState,
-        row.sourceLifecycleStatus,
-        row.mandatoryUpgrade ? 'Yes' : 'No',
-        row.sourceEolDate,
-        row.recommendation,
-        row.sourceHourly,
-        row.recommendedHourly,
-        row.monthlySaving,
-        row.savingPercent,
+        catalog.region,
+        source?.family ?? '',
+        result.sourceVm,
+        os,
+        result.outcome,
+        source?.lifecycleStatus ?? '',
+        source?.retirement?.eolDate ?? '',
+        this.recommendedVm(result),
+        result.sourceHourlyPrice,
+        result.targetHourlyPrice,
+        this.monthlySaving(result),
+        result.savingPercent,
+        result.candidateCount,
         currencyCode,
-        row.confidence,
-        row.explanation,
+        result.reason,
       ]);
     }
     this.download(rows, fileName);
   }
 
-  private price(
-    result: RecommendationResult,
-    vm: NonNullable<RecommendationResult['source']>,
-  ): number | null {
-    return result.os === 'linux' ? vm.prices.linuxPaygHourly : vm.prices.windowsPaygHourly;
+  private recommendedVm(result: Recommendation): string {
+    return result.outcome === 'source-not-found' || result.outcome === 'no-compatible-replacement'
+      ? ''
+      : result.targetVm;
+  }
+
+  private monthlySaving(result: Recommendation): number | null {
+    return result.sourceHourlyPrice !== null && result.targetHourlyPrice !== null
+      ? (result.sourceHourlyPrice - result.targetHourlyPrice) * 730
+      : null;
   }
 
   private download(rows: Array<Array<string | number | null>>, fileName: string): void {

@@ -26,9 +26,6 @@
                 (click)="toggleGroup(group.key)"
                 [attr.aria-controls]="'group-results-' + group.key"
                 [attr.aria-expanded]="!collapsedGroups().has(group.key)"
-                [attr.aria-label]="
-                  (collapsedGroups().has(group.key) ? 'Expand ' : 'Collapse ') + group.title
-                "
               >
                 <svg
                   class="group-chevron"
@@ -52,383 +49,113 @@
           </div>
           <span>{{ group.results.length }}</span>
         </div>
+
         @if (!collapsedGroups().has(group.key)) {
           <div class="result-list" [id]="'group-results-' + group.key">
-            @for (result of group.results; track result.inputSku) {
+            @for (result of group.results; track result.sourceVm) {
               <article
                 class="result-card"
-                [class.not-found]="result.status !== 'recommended'"
-                [class.mandatory]="result.mandatoryUpgrade"
-                [class.temp-disk-change]="dropsTempDisk(result)"
+                [class.not-found]="isFailure(result)"
+                [class.mandatory]="result.outcome === 'eol-migration'"
               >
                 <div class="result-summary">
                   <button
                     class="expand-button"
                     type="button"
-                    (click)="toggle(result.inputSku)"
-                    [attr.aria-expanded]="expanded().has(result.inputSku)"
+                    (click)="toggle(result.sourceVm)"
+                    [attr.aria-expanded]="expanded().has(result.sourceVm)"
                     [attr.aria-label]="
-                      (expanded().has(result.inputSku) ? 'Collapse ' : 'Expand ') + result.inputSku
+                      (expanded().has(result.sourceVm) ? 'Collapse ' : 'Expand ') + result.sourceVm
                     "
                   >
-                    @if (expanded().has(result.inputSku)) {
+                    @if (expanded().has(result.sourceVm)) {
                       <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-                        <path
-                          d="M4 10h12"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                        />
+                        <path d="M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                       </svg>
                     } @else {
                       <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-                        <path
-                          d="M10 4v12M4 10h12"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                        />
+                        <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                       </svg>
                     }
                   </button>
 
-                  <div class="vm current" data-label="Current VM">
+                  <div class="vm current">
                     <small>Current VM</small>
-                    <strong>{{ result.source?.name ?? result.inputSku }}</strong>
-                    <span
-                      >{{ result.source?.vcpusAvailable ?? '—' }} vCPU ·
-                      {{ result.source?.memoryGB ?? '—' }} GB</span
-                    >
-                    @if (result.source?.retirement; as retirement) {
-                      <a
-                        class="retirement"
-                        [class.mandatory-retirement]="result.mandatoryUpgrade"
-                        href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/lifecycle/retired-sizes-list"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {{
-                          result.mandatoryUpgrade ? 'Mandatory upgrade · retired' : 'Scheduled EOL'
-                        }}
-                        ⚠️ {{ retirement.eolDate | date: 'mediumDate' : 'UTC' }}
-                      </a>
+                    <strong>{{ source(result)?.name ?? result.sourceVm }}</strong>
+                    <span>{{ source(result)?.vcpusAvailable ?? '—' }} vCPU · {{ source(result)?.memoryGB ?? '—' }} GB</span>
+                    @if (source(result)?.retirement; as retirement) {
+                      <span class="retirement">EOL ⚠️ {{ retirement.eolDate | date: 'mediumDate' : 'UTC' }}</span>
                     }
                   </div>
 
                   <span class="arrow" aria-hidden="true">→</span>
 
-                  <div class="vm recommended" data-label="Recommended VM">
+                  <div class="vm recommended">
                     <small>Recommended VM</small>
-                    <strong>{{ result.recommendation?.vm?.name ?? 'Keep current VM' }}</strong>
-                    @if (result.recommendation) {
-                      <span
-                        >{{ result.recommendation.vm.vcpusAvailable }} vCPU ·
-                        {{ result.recommendation.vm.memoryGB }} GB</span
-                      >
+                    <strong>{{ target(result)?.name ?? (isFailure(result) ? 'Manual review' : result.targetVm) }}</strong>
+                    @if (target(result); as targetVm) {
+                      <span>{{ targetVm.vcpusAvailable }} vCPU · {{ targetVm.memoryGB }} GB</span>
                     } @else {
-                      <span>{{ result.explanation }}</span>
+                      <span>{{ result.reason }}</span>
                     }
-                  </div>
-
-                  <div class="summary-cell">
-                    <small>CPU</small>
-                    <strong>{{ result.recommendation?.vm?.cpuVendor ?? '—' }}</strong>
-                    <span>{{ result.recommendation?.vm?.cpuArchitecture ?? 'Unknown' }}</span>
                   </div>
 
                   <div class="summary-cell">
                     <small>Result</small>
                     <strong>{{ stateLabel(result) }}</strong>
-                    <span>{{ result.source?.lifecycleStatus ?? 'unknown' }}</span>
-                  </div>
-
-                  <div class="summary-cell">
-                    <small>
-                      Temp disk
-                      <a
-                        class="info-link"
-                        href="https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/resize-vm?tabs=portal#limitations"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Linux supports resizing between VM sizes with and without a local temp disk. Windows requires both the source and target to either have a local temp disk or have no local temp disk."
-                        aria-label="Read Azure temp disk resize limitations"
-                        >ⓘ</a
-                      >
-                    </small>
-                    <strong>{{ localStorage(result.recommendation?.vm) }}</strong>
-                    @if (dropsTempDisk(result)) {
-                      <span class="temp-disk-warning">⚠ Removed — reconfigure temp workloads</span>
-                    } @else {
-                      <span>{{
-                        result.recommendation?.vm?.profile?.localTempDisk
-                          ? 'Preserved'
-                          : 'Not required'
-                      }}</span>
-                    }
+                    <span>{{ result.candidateCount }} compatible candidate(s)</span>
                   </div>
 
                   <div class="summary-cell price">
                     <small>Current hourly</small>
                     <strong>
-                      @if (result.source && price(result, result.source); as sourceHourly) {
-                        {{ sourceHourly | currency: currencyCode() : 'symbol' : '1.4-4' }}
-                      } @else {
-                        —
-                      }
+                      @if (result.sourceHourlyPrice !== null) {
+                        {{ result.sourceHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}
+                      } @else { — }
                     </strong>
-                    <span>{{ result.os }}</span>
                   </div>
 
                   <div class="summary-cell price">
                     <small>New hourly</small>
                     <strong>
-                      @if (result.recommendation?.hourlyPrice; as recommendedHourly) {
-                        {{ recommendedHourly | currency: currencyCode() : 'symbol' : '1.4-4' }}
-                      } @else {
-                        —
-                      }
+                      @if (result.targetHourlyPrice !== null) {
+                        {{ result.targetHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}
+                      } @else { — }
                     </strong>
-                    @if (result.recommendation) {
-                      @if (result.recommendation.savingPercent !== null) {
-                        <span [class]="savingClass(result.recommendation)">
-                          {{ result.recommendation.savingPercent | number: '1.1-1' }}% saving
-                        </span>
-                      } @else {
-                        <span>Source price unavailable</span>
-                      }
+                    @if (result.savingPercent !== null) {
+                      <span [class.positive]="result.savingPercent > 0" [class.negative]="result.savingPercent < 0">
+                        {{ result.savingPercent | number: '1.1-1' }}% saving
+                      </span>
                     }
                   </div>
-
-                  <span class="confidence" [class]="result.confidence.toLowerCase()">{{
-                    result.confidence
-                  }}</span>
                 </div>
 
-                @if (expanded().has(result.inputSku)) {
+                @if (expanded().has(result.sourceVm)) {
                   <div class="details">
-                    @if (result.source && result.recommendation; as candidate) {
-                      <p class="explanation">{{ result.explanation }}</p>
-                      <div class="comparison">
-                        <div class="comparison-head">
-                          <span>Capability</span><strong>Source</strong><strong>Destination</strong>
+                    <p class="explanation">{{ result.reason }}</p>
+                    @if (source(result); as sourceVm) {
+                      @if (target(result); as targetVm) {
+                        <div class="comparison">
+                          <div class="comparison-head">
+                            <span>Capability</span><strong>Source</strong><strong>Destination</strong>
+                          </div>
+                          <div><span>CPU vendor / architecture</span><b>{{ sourceVm.cpuVendor ?? 'Unknown' }} / {{ sourceVm.cpuArchitecture ?? 'Unknown' }}</b><b>{{ targetVm.cpuVendor ?? 'Unknown' }} / {{ targetVm.cpuArchitecture ?? 'Unknown' }}</b></div>
+                          <div><span>Usable vCPU</span><b>{{ sourceVm.vcpusAvailable }}</b><b>{{ targetVm.vcpusAvailable }}</b></div>
+                          <div><span>Memory</span><b>{{ sourceVm.memoryGB }} GB</b><b>{{ targetVm.memoryGB }} GB</b></div>
+                          <div><span>Temp / local disk</span><b>{{ localStorage(sourceVm) }}</b><b>{{ localStorage(targetVm) }}</b></div>
+                          <div><span>Premium IO</span><b>{{ yesNo(sourceVm.premiumIO) }}</b><b>{{ yesNo(targetVm.premiumIO) }}</b></div>
+                          <div><span>Accelerator</span><b>{{ accelerator(sourceVm) }}</b><b>{{ accelerator(targetVm) }}</b></div>
+                          <div><span>Generation</span><b>{{ generation(sourceVm) }}</b><b>{{ generation(targetVm) }}</b></div>
+                          <div><span>Lifecycle</span><b>{{ sourceVm.lifecycleStatus }}</b><b>{{ targetVm.lifecycleStatus }}</b></div>
                         </div>
-                        <div>
-                          <span>CPU vendor / architecture</span
-                          ><b
-                            >{{ result.source.cpuVendor ?? 'Unknown' }} /
-                            {{ result.source.cpuArchitecture ?? 'Unknown' }}</b
-                          ><b
-                            >{{ candidate.vm.cpuVendor ?? 'Unknown' }} /
-                            {{ candidate.vm.cpuArchitecture ?? 'Unknown' }}</b
-                          >
-                        </div>
-                        <div>
-                          <span>Processor</span><b>{{ result.source.cpuModel ?? 'Unknown' }}</b
-                          ><b>{{ candidate.vm.cpuModel ?? 'Unknown' }}</b>
-                        </div>
-                        <div>
-                          <span>Usable vCPU</span><b>{{ result.source.vcpusAvailable }}</b
-                          ><b>{{ candidate.vm.vcpusAvailable }}</b>
-                        </div>
-                        <div>
-                          <span>Physical vCPU</span><b>{{ result.source.vcpus }}</b
-                          ><b>{{ candidate.vm.vcpus }}</b>
-                        </div>
-                        <div>
-                          <span>Memory</span><b>{{ result.source.memoryGB }} GB</b
-                          ><b>{{ candidate.vm.memoryGB }} GB</b>
-                        </div>
-                        <div>
-                          <span>Temp / local disk</span><b>{{ localStorage(result.source) }}</b
-                          ><b>{{ localStorage(candidate.vm) }}</b>
-                        </div>
-                        <div>
-                          <span>Storage throughput profile</span
-                          ><b
-                            >{{ yesNo(result.source.premiumIO) }} Premium IO ·
-                            {{ result.source.maxDataDisks ?? 'Unknown' }} data disks</b
-                          ><b
-                            >{{ yesNo(candidate.vm.premiumIO) }} Premium IO ·
-                            {{ candidate.vm.maxDataDisks ?? 'Unknown' }} data disks</b
-                          >
-                        </div>
-                        <div>
-                          <span>Network bandwidth profile</span
-                          ><b
-                            >{{ result.source.maxNICs ?? 'Unknown' }} NICs · accelerated networking
-                            {{ yesNo(result.source.acceleratedNetworking) }}</b
-                          ><b
-                            >{{ candidate.vm.maxNICs ?? 'Unknown' }} NICs · accelerated networking
-                            {{ yesNo(candidate.vm.acceleratedNetworking) }}</b
-                          >
-                        </div>
-                        <div>
-                          <span>Accelerator</span><b>{{ accelerator(result.source) }}</b
-                          ><b>{{ accelerator(candidate.vm) }}</b>
-                        </div>
-                        <div>
-                          <span>Generation</span><b>{{ generation(result.source) }}</b
-                          ><b>{{ generation(candidate.vm) }}</b>
-                        </div>
-                        <div>
-                          <span>Lifecycle</span
-                          ><b
-                            >{{ result.source.lifecycleStatus
-                            }}{{
-                              result.source.retirement
-                                ? ' · EOL ' + result.source.retirement.eolDate
-                                : ''
-                            }}</b
-                          ><b>{{ candidate.vm.lifecycleStatus }}</b>
-                        </div>
-                      </div>
 
-                      <div class="badges">
-                        @for (badge of badges(candidate); track badge.id) {
-                          <span
-                            class="badge"
-                            [class.passed]="badge.passed"
-                            [class.failed]="!badge.passed"
-                            [title]="badge.detail"
-                          >
-                            {{ badge.passed ? '✓' : '✕' }} {{ badge.label }}
-                          </span>
-                        }
-                        @if (candidate.savingPercent !== null) {
-                          <span
-                            class="badge price"
-                            [class.passed]="candidate.savingPercent > 0"
-                            [class.failed]="candidate.savingPercent < 0"
-                            [class.neutral]="candidate.savingPercent === 0"
-                          >
-                            @if (candidate.savingPercent === 0) {
-                              = same price
-                            } @else {
-                              {{ candidate.savingPercent > 0 ? '↓' : '↑' }}
-                              {{ absolute(candidate.savingPercent) | number: '1.0-0' }}%
-                              {{ candidate.savingPercent > 0 ? 'cheaper' : 'more expensive' }}
-                            }
-                          </span>
-                        }
-                      </div>
-
-                      @if (candidate.notes.length > 0) {
-                        <div class="candidate-notes" role="list">
-                          @for (note of candidate.notes; track note) {
-                            <div role="listitem">• {{ note }}</div>
-                          }
+                        <div class="pricing-comparison">
+                          <div class="pricing-head"><span>Retail estimate</span><strong>Current</strong><strong>Recommended</strong></div>
+                          <div><span>Hourly</span><b>{{ result.sourceHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}</b><b>{{ result.targetHourlyPrice | currency: currencyCode() : 'symbol' : '1.4-4' }}</b></div>
+                          <div><span>Monthly · 730 hours</span><b>{{ (result.sourceHourlyPrice ?? 0) * 730 | currency: currencyCode() }}</b><b>{{ (result.targetHourlyPrice ?? 0) * 730 | currency: currencyCode() }}</b></div>
+                          <div class="saving-row"><span>Estimated monthly saving</span><b>{{ monthlySaving(result) | currency: currencyCode() }}</b><b>{{ result.savingPercent | number: '1.1-1' }}%</b></div>
                         </div>
                       }
-
-                      <div class="pricing-comparison">
-                        <div class="pricing-head">
-                          <span>Retail estimate</span><strong>Current</strong
-                          ><strong>Recommended</strong>
-                        </div>
-                        <div>
-                          <span>Hourly</span>
-                          <b>
-                            @if (price(result, result.source); as sourceHourly) {
-                              {{ sourceHourly | currency: currencyCode() : 'symbol' : '1.4-4' }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                          <b>
-                            @if (candidate.hourlyPrice !== null) {
-                              {{
-                                candidate.hourlyPrice
-                                  | currency: currencyCode() : 'symbol' : '1.4-4'
-                              }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                        </div>
-                        <div>
-                          <span>Monthly · 730 hours</span>
-                          <b>
-                            @if (price(result, result.source); as sourceHourly) {
-                              {{ sourceHourly * 730 | currency: currencyCode() }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                          <b>
-                            @if (candidate.hourlyPrice !== null) {
-                              {{ candidate.hourlyPrice * 730 | currency: currencyCode() }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                        </div>
-                        <div>
-                          <span>Yearly · 8,760 hours</span>
-                          <b>
-                            @if (price(result, result.source); as sourceHourly) {
-                              {{ sourceHourly * 8760 | currency: currencyCode() }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                          <b>
-                            @if (candidate.hourlyPrice !== null) {
-                              {{ candidate.hourlyPrice * 8760 | currency: currencyCode() }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                        </div>
-                        <div class="saving-row">
-                          <span>Estimated monthly saving</span>
-                          <b>
-                            @if (candidate.monthlySaving !== null) {
-                              {{ candidate.monthlySaving | currency: currencyCode() }}
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                          <b>
-                            @if (candidate.savingPercent !== null) {
-                              {{ candidate.savingPercent | number: '1.1-1' }}%
-                            } @else {
-                              Unavailable
-                            }
-                          </b>
-                        </div>
-                      </div>
-
-                      @for (list of candidateLists(result); track list.key) {
-                        <div class="alternatives">
-                          <h3>{{ list.title }}</h3>
-                          @for (alternative of list.candidates; track alternative.vm.name) {
-                            <span
-                              >{{ alternative.vm.name }} ·
-                              @if (alternative.hourlyPrice !== null) {
-                                {{
-                                  alternative.hourlyPrice
-                                    | currency: currencyCode() : 'symbol' : '1.4-4'
-                                }}/hr
-                              } @else {
-                                price unavailable
-                              }
-                            </span>
-                          }
-                        </div>
-                      }
-
-                      @if (
-                        result.source.restrictions.length > 0 ||
-                        candidate.vm.restrictions.length > 0
-                      ) {
-                        <p class="restriction">
-                          Azure reported subscription restrictions for one or both SKUs. Regional
-                          availability is confirmed, but deployment may require a quota or
-                          subscription check.
-                        </p>
-                      }
-                    } @else {
-                      <p class="explanation">{{ result.explanation }}</p>
                     }
                   </div>
                 }

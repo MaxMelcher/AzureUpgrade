@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import { RegionalCatalog, RetirementCatalog, VmSku } from '../models/vm.models';
 import { applyRetirementMetadata, applyLifecycleStatus } from './retirement-metadata';
 import { region as regionOf, vm as baseVm } from './vm.fixtures';

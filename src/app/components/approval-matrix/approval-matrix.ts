@@ -1,23 +1,13 @@
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  input,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import {
-  CurrencyCode,
-  OperatingSystem,
-  RecommendationResult,
-  RegionInfo,
-  VmSku,
-} from '../../models/vm.models';
+import { CurrencyCode, OperatingSystem, RegionInfo, VmSku } from '../../models/vm.models';
 import { CatalogService } from '../../services/catalog.service';
-import { RecommendationEngine } from '../../services/recommendation-engine';
+import {
+  Recommendation,
+  RecommendationEngine,
+  representativeSkus,
+} from '../../services/recommendation-engine';
 
 type ApprovalDecision = 'correct' | 'incorrect';
 type ApprovalFilter = 'all' | 'unreviewed' | ApprovalDecision;
@@ -31,8 +21,8 @@ type ApprovalFilter = 'all' | 'unreviewed' | ApprovalDecision;
 })
 export class ApprovalMatrixComponent {
   private readonly catalogService = inject(CatalogService);
-  private readonly storageKey = 'azure-vm-upgrade-advisor.approvals.v1';
-  private readonly correctionStorageKey = 'azure-vm-upgrade-advisor.corrections.v1';
+  private readonly storageKey = 'azure-vm-upgrade-advisor.approvals.v2';
+  private readonly correctionStorageKey = 'azure-vm-upgrade-advisor.corrections.v2';
   private initialized = false;
 
   public readonly regions = input.required<RegionInfo[]>();
@@ -40,13 +30,11 @@ export class ApprovalMatrixComponent {
   protected region = 'uksouth';
   protected currency: CurrencyCode = 'GBP';
   protected os: OperatingSystem = 'linux';
-  protected includeMigrationRecommendations = true;
-  protected keepTempDisk = true;
   protected readonly loading = signal(false);
   protected readonly error = signal('');
   protected readonly catalogGeneratedAt = signal('');
   protected readonly catalogSkus = signal<VmSku[]>([]);
-  protected readonly results = signal<RecommendationResult[]>([]);
+  protected readonly results = signal<Recommendation[]>([]);
   protected readonly filter = signal<ApprovalFilter>('all');
   protected readonly decisions = signal<Record<string, ApprovalDecision>>(this.readDecisions());
   protected readonly corrections = signal<Record<string, string>>(this.readCorrections());
@@ -94,16 +82,10 @@ export class ApprovalMatrixComponent {
       if (requestedRegion && regions.some((item) => item.name === requestedRegion)) {
         this.region = requestedRegion;
       }
-      if (
-        requestedCurrency === 'GBP' ||
-        requestedCurrency === 'EUR' ||
-        requestedCurrency === 'USD'
-      ) {
+      if (requestedCurrency === 'GBP' || requestedCurrency === 'EUR' || requestedCurrency === 'USD') {
         this.currency = requestedCurrency;
       }
       if (requestedOs === 'linux' || requestedOs === 'windows') this.os = requestedOs;
-      this.keepTempDisk = query.get('keepTempDisk') !== 'false';
-      this.includeMigrationRecommendations = query.get('bestFit') !== 'false';
       this.load();
     });
   }
@@ -117,14 +99,9 @@ export class ApprovalMatrixComponent {
       next: (catalog) => {
         const engine = new RecommendationEngine(catalog);
         this.catalogGeneratedAt.set(catalog.generatedAt);
-        this.catalogSkus.set(
-          [...catalog.skus].sort((left, right) => left.name.localeCompare(right.name)),
-        );
+        this.catalogSkus.set([...catalog.skus].sort((left, right) => left.name.localeCompare(right.name)));
         this.results.set(
-          engine.createRepresentativeRecommendations(this.os, {
-            includeMigrationRecommendations: this.includeMigrationRecommendations,
-            keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
-          }),
+          representativeSkus(catalog, this.os).map((sku) => engine.recommend(sku.name, this.os)),
         );
         this.loading.set(false);
       },
@@ -135,7 +112,18 @@ export class ApprovalMatrixComponent {
     });
   }
 
-  protected setDecision(result: RecommendationResult, decision: ApprovalDecision): void {
+  protected source(result: Recommendation): VmSku | null {
+    return this.catalogSkus().find((sku) => sku.name === result.sourceVm) ?? null;
+  }
+
+  protected target(result: Recommendation): VmSku | null {
+    if (result.outcome === 'source-not-found' || result.outcome === 'no-compatible-replacement') {
+      return null;
+    }
+    return this.catalogSkus().find((sku) => sku.name === result.targetVm) ?? null;
+  }
+
+  protected setDecision(result: Recommendation, decision: ApprovalDecision): void {
     const key = this.reviewKey(result);
     const updated = { ...this.decisions() };
     if (updated[key] === decision) delete updated[key];
@@ -144,11 +132,11 @@ export class ApprovalMatrixComponent {
     this.persistDecisions(updated);
   }
 
-  protected decision(result: RecommendationResult): ApprovalDecision | null {
+  protected decision(result: Recommendation): ApprovalDecision | null {
     return this.decisions()[this.reviewKey(result)] ?? null;
   }
 
-  protected setCorrection(result: RecommendationResult, recommendation: string): void {
+  protected setCorrection(result: Recommendation, recommendation: string): void {
     if (
       recommendation !== '' &&
       recommendation !== this.noRecommendationValue &&
@@ -166,22 +154,22 @@ export class ApprovalMatrixComponent {
     if (recommendation !== '') this.setCorrectionSearch(result, '');
   }
 
-  protected correction(result: RecommendationResult): string {
+  protected correction(result: Recommendation): string {
     const correction = this.corrections()[this.reviewKey(result)] ?? '';
     if (correction === '' || correction === this.noRecommendationValue) return correction;
     return this.catalogSkus().some((sku) => sku.name === correction) ? correction : '';
   }
 
-  protected setCorrectionSearch(result: RecommendationResult, search: string): void {
+  protected setCorrectionSearch(result: Recommendation, search: string): void {
     const key = this.reviewKey(result);
     this.correctionSearches.update((values) => ({ ...values, [key]: search }));
   }
 
-  protected correctionSearch(result: RecommendationResult): string {
+  protected correctionSearch(result: Recommendation): string {
     return this.correctionSearches()[this.reviewKey(result)] ?? '';
   }
 
-  protected correctionOptions(result: RecommendationResult): VmSku[] {
+  protected correctionOptions(result: Recommendation): VmSku[] {
     const query = this.correctionSearch(result).trim().toLowerCase();
     if (query === '') {
       const selected = this.correction(result);
@@ -193,34 +181,15 @@ export class ApprovalMatrixComponent {
     );
   }
 
-  protected family(result: RecommendationResult): string {
-    return result.source?.family ?? 'Unknown family';
-  }
-
-  protected price(result: RecommendationResult): number | null {
-    if (!result.source) return null;
-    return result.os === 'linux'
-      ? result.source.prices.linuxPaygHourly
-      : result.source.prices.windowsPaygHourly;
-  }
-
-  protected failedChecks(result: RecommendationResult): string[] {
-    return (
-      result.recommendation?.checks.filter((check) => !check.passed).map((check) => check.label) ??
-      []
-    );
+  protected family(result: Recommendation): string {
+    return this.source(result)?.family ?? 'Unknown family';
   }
 
   protected downloadSnapshot(): void {
     const snapshot = {
-      schemaVersion: 2,
-      configuration: {
-        region: this.region,
-        currency: this.currency,
-        os: this.os,
-        includeMigrationRecommendations: this.includeMigrationRecommendations,
-        keepTempDisk: this.os === 'linux' ? this.keepTempDisk : true,
-      },
+      schemaVersion: 3,
+      engine: 'declarative-rule-based',
+      configuration: { region: this.region, currency: this.currency, os: this.os },
       summary: this.counts(),
       rows: this.results().map((result) => {
         const correction = this.correction(result);
@@ -230,29 +199,20 @@ export class ApprovalMatrixComponent {
           verdict: this.decision(result),
           expectedRecommendationSpecified: correctionSpecified,
           expectedRecommendationKind: correctionSpecified
-            ? correction === this.noRecommendationValue
-              ? 'none'
-              : 'sku'
+            ? correction === this.noRecommendationValue ? 'none' : 'sku'
             : null,
           expectedRecommendation:
             correctionSpecified && correction !== this.noRecommendationValue ? correction : null,
           family: this.family(result),
-          source: result.source?.name ?? result.inputSku,
-          recommendation: result.recommendation?.vm.name ?? null,
-          status: result.status,
-          recommendationType: result.recommendationType,
-          lifecycle: result.source?.lifecycleStatus ?? null,
-          mandatoryUpgrade: result.mandatoryUpgrade,
-          confidence: result.confidence,
-          sourceHourly: this.price(result),
-          recommendedHourly: result.recommendation?.hourlyPrice ?? null,
-          savingPercent: result.recommendation?.savingPercent ?? null,
-          lostCapabilities: result.recommendation?.lostCapabilities ?? [],
-          failedChecks:
-            result.recommendation?.checks
-              .filter((check) => !check.passed)
-              .map((check) => ({ id: check.id, label: check.label, detail: check.detail })) ?? [],
-          explanation: result.explanation,
+          source: result.sourceVm,
+          recommendation: this.target(result)?.name ?? null,
+          outcome: result.outcome,
+          lifecycle: this.source(result)?.lifecycleStatus ?? null,
+          sourceHourly: result.sourceHourlyPrice,
+          recommendedHourly: result.targetHourlyPrice,
+          savingPercent: result.savingPercent,
+          candidateCount: result.candidateCount,
+          reason: result.reason,
         };
       }),
     };
@@ -267,19 +227,15 @@ export class ApprovalMatrixComponent {
     URL.revokeObjectURL(url);
   }
 
-  private reviewKey(result: RecommendationResult): string {
-    const recommendation = result.recommendation?.vm.name ?? 'none';
-    const keepTempDisk = this.os === 'linux' ? this.keepTempDisk : true;
+  private reviewKey(result: Recommendation): string {
     return [
       this.region,
       this.currency,
       this.os,
-      Number(this.includeMigrationRecommendations),
-      Number(keepTempDisk),
       this.family(result),
-      result.source?.name ?? result.inputSku,
-      recommendation,
-      result.status,
+      result.sourceVm,
+      this.target(result)?.name ?? 'none',
+      result.outcome,
     ].join('|');
   }
 
@@ -289,18 +245,13 @@ export class ApprovalMatrixComponent {
       region: this.region,
       currency: this.currency,
       os: this.os,
-      bestFit: String(this.includeMigrationRecommendations),
-      keepTempDisk: String(this.os === 'linux' ? this.keepTempDisk : true),
     });
     window.history.replaceState(null, '', `${window.location.pathname}?${query}`);
   }
 
   private readDecisions(): Record<string, ApprovalDecision> {
     try {
-      const value = JSON.parse(localStorage.getItem(this.storageKey) ?? '{}') as Record<
-        string,
-        unknown
-      >;
+      const value = JSON.parse(localStorage.getItem(this.storageKey) ?? '{}') as Record<string, unknown>;
       return Object.fromEntries(
         Object.entries(value).filter(
           (entry): entry is [string, ApprovalDecision] =>
@@ -322,10 +273,7 @@ export class ApprovalMatrixComponent {
 
   private readCorrections(): Record<string, string> {
     try {
-      const value = JSON.parse(localStorage.getItem(this.correctionStorageKey) ?? '{}') as Record<
-        string,
-        unknown
-      >;
+      const value = JSON.parse(localStorage.getItem(this.correctionStorageKey) ?? '{}') as Record<string, unknown>;
       return Object.fromEntries(
         Object.entries(value).filter(
           (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0,
